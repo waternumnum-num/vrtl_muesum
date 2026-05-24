@@ -1,0 +1,3717 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual Museum</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; overflow: hidden; font-family: 'Georgia', serif; }
+  #canvas-container { width: 100vw; height: 100vh; position: relative; }
+  canvas { display: block; }
+
+
+  #info-panel {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(to top, rgba(8,6,3,0.97) 70%, rgba(8,6,3,0.0));
+    padding: 28px 40px 24px;
+    color: #e8dfc8;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(.22,1,.36,1);
+    pointer-events: none;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  #info-panel.visible { transform: translateY(0); pointer-events: all; }
+  #info-panel h2 { font-size: 22px; color: #f0d080; letter-spacing: 0.1em; margin-bottom: 6px; }
+  #info-panel p { font-size: 14px; opacity: 0.8; max-width: 600px; line-height: 1.7; }
+  #info-panel .meta { font-size: 11px; opacity: 0.5; margin-top: 6px; letter-spacing: 0.12em; text-transform: uppercase; }
+  #close-btn {
+    background: rgba(200,170,100,0.15);
+    border: 1px solid rgba(200,170,100,0.4);
+    color: #c8aa64;
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    transition: background 0.2s;
+    white-space: nowrap;
+    margin-left: 32px;
+  }
+  #close-btn:hover { background: rgba(200,170,100,0.28); }
+
+  #crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 20px; height: 20px;
+    pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(255,220,150,0.55);
+  }
+  #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+  #crosshair::after { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+
+  /* ── TOP TOOLBAR (รวมปุ่มทั้งหมด) ── */
+  #toolbar {
+    position: absolute;
+    top: 52px; right: 16px;
+    display: flex; gap: 8px; align-items: center;
+    z-index: 90; flex-wrap: wrap; justify-content: flex-end;
+    max-width: calc(100vw - 32px);
+  }
+  .tb-btn {
+    background: rgba(10,8,5,0.76);
+    border-radius: 6px; padding: 8px 14px;
+    font-size: 12px; letter-spacing: 0.07em;
+    backdrop-filter: blur(8px); cursor: pointer;
+    font-family: 'Georgia', serif;
+    transition: background 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+  #edit-btn  { border: 1px solid rgba(200,170,100,0.35); color: rgba(220,200,160,0.9); }
+  #edit-btn:hover  { background: rgba(200,170,100,0.18); border-color: rgba(200,170,100,0.6); }
+  #edit-btn.active { background: rgba(200,140,40,0.28);  border-color: rgba(200,170,100,0.8); color: #f0d080; }
+
+  #model-btn { border: 1px solid rgba(120,180,255,0.35); color: rgba(180,210,255,0.9); }
+  #model-btn:hover { background: rgba(100,160,255,0.15); border-color: rgba(120,180,255,0.7); }
+
+  #quiz-btn  { border: 1px solid rgba(120,220,120,0.35); color: rgba(180,240,180,0.9); }
+  #quiz-btn:hover  { background: rgba(80,200,80,0.15);  border-color: rgba(120,220,120,0.7); }
+  #quiz-btn.active { background: rgba(60,180,60,0.28);  border-color: rgba(120,220,120,0.9); color: #80ff80; }
+
+  #clear-btn { border: 1px solid rgba(200,80,80,0.3); color: rgba(255,150,150,0.7); font-size: 13px; padding: 8px 10px; }
+  #clear-btn:hover { background: rgba(200,60,60,0.2); border-color: rgba(255,100,100,0.6); }
+
+  /* HUD อยู่ซ้ายบน ไม่ทับ toolbar */
+  #hud {
+    position: absolute;
+    top: 52px; left: 16px;
+    background: rgba(10,8,5,0.72);
+    border: 1px solid rgba(200,170,100,0.35);
+    border-radius: 8px; padding: 7px 16px;
+    color: rgba(220,200,160,0.9); font-size: 12px;
+    letter-spacing: 0.05em; backdrop-filter: blur(8px);
+    white-space: nowrap; pointer-events: none;
+    line-height: 1.6;
+  }
+  #hud span { color: rgba(255,215,100,0.95); font-weight: bold; }
+
+  #edit-hint {
+    position: absolute;
+    top: 60px; left: 50%; transform: translateX(-50%);
+    background: rgba(180,120,20,0.82);
+    border: 1px solid rgba(240,200,80,0.5);
+    border-radius: 6px;
+    padding: 8px 20px;
+    color: #fff8dc;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+  }
+  #edit-hint.show { opacity: 1; }
+
+  /* Upload modal */
+  #upload-modal {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%) scale(0.92);
+    background: rgba(14,11,7,0.97);
+    border: 1px solid rgba(200,170,100,0.4);
+    border-radius: 12px;
+    padding: 28px 32px 24px;
+    color: #e8dfc8;
+    min-width: 320px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    backdrop-filter: blur(16px);
+    z-index: 100;
+    text-align: center;
+  }
+  #upload-modal.show { opacity: 1; pointer-events: all; transform: translate(-50%,-50%) scale(1); }
+  #upload-modal h3 { color: #f0d080; font-size: 16px; letter-spacing: 0.12em; margin-bottom: 6px; }
+  #upload-modal p { font-size: 12px; opacity: 0.6; margin-bottom: 20px; }
+  #upload-drop {
+    border: 2px dashed rgba(200,170,100,0.35);
+    border-radius: 8px;
+    padding: 28px 20px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 14px;
+  }
+  #upload-drop:hover, #upload-drop.drag-over {
+    border-color: rgba(200,170,100,0.8);
+    background: rgba(200,170,100,0.06);
+  }
+  #upload-drop .icon { font-size: 32px; margin-bottom: 8px; }
+  #upload-drop .label { font-size: 13px; color: #c8aa64; }
+  #upload-drop .sublabel { font-size: 11px; opacity: 0.5; margin-top: 4px; }
+  #file-input { display: none; }
+  #upload-title-input {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(200,170,100,0.25);
+    border-radius: 5px;
+    padding: 8px 12px;
+    color: #e8dfc8;
+    font-family: 'Georgia', serif;
+    font-size: 13px;
+    margin-bottom: 8px;
+    outline: none;
+  }
+  #upload-title-input:focus { border-color: rgba(200,170,100,0.6); }
+  #upload-desc-input {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(200,170,100,0.25);
+    border-radius: 5px;
+    padding: 8px 12px;
+    color: #e8dfc8;
+    font-family: 'Georgia', serif;
+    font-size: 12px;
+    margin-bottom: 16px;
+    outline: none;
+    resize: none;
+    height: 56px;
+  }
+  #upload-desc-input:focus { border-color: rgba(200,170,100,0.6); }
+  .upload-btns { display: flex; gap: 10px; justify-content: center; }
+  .upload-btns button {
+    padding: 8px 22px;
+    border-radius: 5px;
+    font-family: 'Georgia', serif;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #upload-confirm {
+    background: rgba(200,170,100,0.22);
+    border: 1px solid rgba(200,170,100,0.5);
+    color: #f0d080;
+  }
+  #upload-confirm:hover { background: rgba(200,170,100,0.38); }
+  #upload-cancel {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(220,200,160,0.6);
+  }
+  #upload-cancel:hover { background: rgba(255,255,255,0.1); }
+  #upload-preview {
+    width: 100%; height: 120px;
+    object-fit: contain;
+    border-radius: 5px;
+    margin-bottom: 12px;
+    display: none;
+    border: 1px solid rgba(200,170,100,0.2);
+  }
+
+  /* ── Audio Upload ── */
+  #audio-upload-section {
+    margin-top: 12px;
+    border-top: 1px solid rgba(200,170,100,0.15);
+    padding-top: 12px;
+  }
+  #audio-upload-section .section-label {
+    font-size: 11px; color: rgba(200,170,100,0.55);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  #audio-drop {
+    border: 2px dashed rgba(200,170,100,0.25);
+    border-radius: 7px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    display: flex; align-items: center; gap: 12px;
+  }
+  #audio-drop:hover, #audio-drop.drag-over {
+    border-color: rgba(200,170,100,0.7);
+    background: rgba(200,170,100,0.05);
+  }
+  #audio-drop .audio-icon { font-size: 22px; flex-shrink: 0; }
+  #audio-drop .audio-label { font-size: 12px; color: #c8aa64; }
+  #audio-drop .audio-sublabel { font-size: 10px; opacity: 0.45; margin-top: 2px; }
+  #audio-file-input { display: none; }
+  #audio-name-display {
+    font-size: 11px; color: rgba(200,170,100,0.7);
+    margin-top: 6px; text-align: center;
+    min-height: 16px;
+  }
+  #audio-remove-btn {
+    display: none;
+    background: rgba(200,60,60,0.12);
+    border: 1px solid rgba(200,60,60,0.3);
+    color: rgba(255,130,130,0.7);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-top: 4px;
+    font-family: 'Georgia', serif;
+    transition: background 0.2s;
+  }
+  #audio-remove-btn:hover { background: rgba(200,60,60,0.25); }
+
+  /* ── Audio play button floating on artwork ── */
+  .audio-hud-btn {
+    position: absolute;
+    background: rgba(10,8,5,0.82);
+    border: 1px solid rgba(200,170,100,0.5);
+    color: #f0d080;
+    border-radius: 50%;
+    width: 38px; height: 38px;
+    font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: background 0.2s, transform 0.15s, opacity 0.3s;
+    z-index: 60;
+    pointer-events: all;
+    opacity: 0;
+    transform: scale(0.85);
+    user-select: none;
+  }
+  .audio-hud-btn.visible {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .audio-hud-btn.playing {
+    border-color: rgba(200,170,100,0.9);
+    background: rgba(200,140,40,0.28);
+    color: #ffe080;
+  }
+  .audio-hud-btn:hover { background: rgba(200,170,100,0.22); transform: scale(1.1); }
+
+  /* ── Model Upload Modal ── */
+  #model-modal {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%) scale(0.92);
+    background: rgba(8,12,20,0.97);
+    border: 1px solid rgba(100,160,255,0.35);
+    border-radius: 14px;
+    padding: 28px 32px 24px;
+    color: #d0e4ff;
+    width: 380px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    backdrop-filter: blur(16px);
+    z-index: 101;
+  }
+  #model-modal.show { opacity: 1; pointer-events: all; transform: translate(-50%,-50%) scale(1); }
+  #model-modal h3 { color: #80c0ff; font-size: 16px; letter-spacing: 0.1em; margin-bottom: 4px; }
+  #model-modal .subtitle { font-size: 11px; opacity: 0.5; margin-bottom: 18px; }
+
+  #model-drop {
+    border: 2px dashed rgba(100,160,255,0.35);
+    border-radius: 8px;
+    padding: 26px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  #model-drop:hover, #model-drop.drag-over {
+    border-color: rgba(100,160,255,0.8);
+    background: rgba(100,160,255,0.06);
+  }
+  #model-drop .icon { font-size: 30px; margin-bottom: 6px; }
+  #model-drop .label { font-size: 13px; color: #80c0ff; }
+  #model-drop .sublabel { font-size: 11px; opacity: 0.45; margin-top: 4px; }
+  #model-file-input { display: none; }
+
+  .model-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .model-row label { font-size: 11px; opacity: 0.55; width: 56px; padding-top: 9px; flex-shrink: 0; }
+  .model-input {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(100,160,255,0.2);
+    border-radius: 5px;
+    padding: 7px 10px;
+    color: #d0e4ff;
+    font-family: 'Georgia', serif;
+    font-size: 12px;
+    outline: none;
+  }
+  .model-input:focus { border-color: rgba(100,160,255,0.6); }
+
+  .scale-row { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .scale-row label { font-size: 11px; opacity: 0.55; width: 56px; flex-shrink: 0; }
+  .scale-row input[type=range] { flex: 1; accent-color: #60a0ff; }
+  .scale-row span { font-size: 11px; color: #80c0ff; width: 36px; text-align: right; }
+
+  #model-status {
+    font-size: 11px; min-height: 18px; margin-bottom: 10px;
+    color: #80ffb0; text-align: center; opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #model-status.show { opacity: 1; }
+  #model-status.error { color: #ff8080; }
+
+  .model-btns { display: flex; gap: 10px; justify-content: center; }
+  .model-btns button {
+    padding: 8px 22px; border-radius: 5px;
+    font-family: 'Georgia', serif; font-size: 13px;
+    letter-spacing: 0.08em; cursor: pointer; transition: background 0.2s;
+  }
+  #model-confirm {
+    background: rgba(80,140,255,0.2);
+    border: 1px solid rgba(100,160,255,0.5);
+    color: #80c0ff;
+  }
+  #model-confirm:hover { background: rgba(80,140,255,0.35); }
+  #model-cancel-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(200,220,255,0.5);
+  }
+  #model-cancel-btn:hover { background: rgba(255,255,255,0.09); }
+
+  .model-tab {
+    flex: 1; padding: 7px 10px; border-radius: 6px; cursor: pointer;
+    font-family: 'Georgia', serif; font-size: 12px; letter-spacing: 0.05em;
+    border: 1px solid rgba(100,160,255,0.2);
+    background: rgba(100,160,255,0.05); color: rgba(140,180,255,0.6);
+    transition: all 0.15s;
+  }
+  .model-tab.active {
+    background: rgba(80,140,255,0.22); border-color: rgba(100,160,255,0.6);
+    color: #90c8ff;
+  }
+  .model-tab:hover { background: rgba(80,140,255,0.15); }
+
+  /* Placed models list */
+  #models-list {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 220px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: rgba(8,12,20,0.88);
+    border-top: 1px solid rgba(100,160,255,0.2);
+    border-left: 1px solid rgba(100,160,255,0.2);
+    border-radius: 10px 0 0 0;
+    padding: 10px 12px;
+    display: none;
+    backdrop-filter: blur(10px);
+  }
+  #models-list.show { display: block; }
+  #models-list h4 { font-size: 11px; color: rgba(120,180,255,0.7); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .model-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border-bottom: 1px solid rgba(100,160,255,0.1);
+    font-size: 12px; color: #b0d0ff;
+  }
+  .model-item:last-child { border-bottom: none; }
+  .model-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .model-item-del {
+    cursor: pointer; color: rgba(255,120,120,0.6); font-size: 14px;
+    padding: 0 4px; transition: color 0.15s; flex-shrink: 0;
+  }
+  .model-item-del:hover { color: rgba(255,120,120,1); }
+
+  /* loading spinner */
+  #model-spinner {
+    display: none; width: 28px; height: 28px;
+    border: 3px solid rgba(100,160,255,0.2);
+    border-top-color: #60a0ff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto 10px;
+  }
+  #model-spinner.show { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Transform Gizmo Panel ── */
+  #transform-panel {
+    position: absolute;
+    right: 16px; top: 100px;
+    transform: translateY(-8px);
+    background: rgba(8,10,18,0.94);
+    border: 1px solid rgba(100,160,255,0.3);
+    border-radius: 14px;
+    padding: 14px 18px 12px;
+    color: #c8dcff;
+    display: none;
+    backdrop-filter: blur(14px);
+    z-index: 50;
+    width: 280px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    transition: opacity 0.2s, transform 0.2s;
+    opacity: 0;
+  }
+  #transform-panel.show {
+    display: block; opacity: 1; transform: translateY(0);
+  }
+  #transform-panel .tp-title {
+    font-size: 12px; color: rgba(100,160,255,0.7);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 12px; display: flex;
+    justify-content: space-between; align-items: center;
+  }
+  #transform-panel .tp-title span { color: #80b8ff; font-style: italic; text-transform: none; letter-spacing: 0; }
+  #tp-close {
+    cursor: pointer; color: rgba(180,200,255,0.4);
+    font-size: 16px; line-height: 1;
+    transition: color 0.15s;
+  }
+  #tp-close:hover { color: rgba(255,120,120,0.9); }
+
+  .tp-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+  .tp-label {
+    font-size: 10px; opacity: 0.5; width: 42px;
+    text-transform: uppercase; letter-spacing: 0.1em; flex-shrink: 0;
+  }
+  .tp-btn {
+    flex: 1; padding: 6px 0; border-radius: 5px;
+    font-size: 12px; letter-spacing: 0.04em;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    border: 1px solid rgba(100,160,255,0.2);
+    background: rgba(100,160,255,0.07);
+    color: #a0c8ff; font-family: 'Georgia', serif;
+    user-select: none;
+  }
+  .tp-btn:hover { background: rgba(100,160,255,0.2); border-color: rgba(100,160,255,0.5); }
+  .tp-btn:active { background: rgba(100,160,255,0.35); }
+  .tp-btn.danger { border-color: rgba(255,80,80,0.25); color: rgba(255,130,130,0.8); background: rgba(255,60,60,0.06); }
+  .tp-btn.danger:hover { background: rgba(255,60,60,0.18); border-color: rgba(255,80,80,0.6); }
+
+  .tp-sep { height: 1px; background: rgba(100,160,255,0.12); margin: 8px 0; }
+
+  .tp-mode-row { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tp-mode-btn {
+    flex: 1; padding: 6px; border-radius: 6px; font-size: 11px;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+    border: 1px solid rgba(100,160,255,0.18);
+    background: rgba(100,160,255,0.05); color: rgba(140,180,255,0.6);
+    font-family: 'Georgia', serif; letter-spacing: 0.05em;
+  }
+  .tp-mode-btn.active {
+    background: rgba(80,140,255,0.28); border-color: rgba(100,160,255,0.7);
+    color: #90c8ff;
+  }
+
+  /* kbd hints */
+  .tp-hint {
+    font-size: 10px; opacity: 0.38; text-align: center;
+    margin-top: 6px; letter-spacing: 0.06em;
+  }
+
+  /* ══ QUIZ SYSTEM ══════════════════════════════════════════════ */
+
+  #quiz-hint {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,80,20,0.88); border: 1px solid rgba(80,200,80,0.4);
+    border-radius: 6px; padding: 8px 20px; color: #b0ffb0; font-size: 12px;
+    letter-spacing: 0.06em; backdrop-filter: blur(8px); pointer-events: none;
+    opacity: 0; transition: opacity 0.3s; white-space: nowrap;
+  }
+  #quiz-hint.show { opacity: 1; }
+
+  /* Quiz modal */
+  #quiz-modal {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%) scale(0.9);
+    background: rgba(6,14,8,0.97);
+    border: 1px solid rgba(80,200,80,0.3);
+    border-radius: 16px; padding: 28px 32px 24px;
+    color: #d0f0d0; width: 460px; max-width: 92vw;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.28s, transform 0.28s;
+    backdrop-filter: blur(18px); z-index: 200;
+  }
+  #quiz-modal.show { opacity: 1; pointer-events: all; transform: translate(-50%,-50%) scale(1); }
+
+  .qm-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+  .qm-tag { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(80,200,80,0.6); }
+  .qm-artwork { font-size: 12px; color: rgba(180,240,180,0.6); font-style: italic; margin-bottom: 14px; }
+  #qm-close { cursor: pointer; color: rgba(180,240,180,0.35); font-size: 18px; line-height: 1; transition: color 0.15s; }
+  #qm-close:hover { color: rgba(255,100,100,0.9); }
+
+  #qm-question {
+    font-size: 16px; line-height: 1.65; color: #e8f8e8;
+    margin-bottom: 20px; letter-spacing: 0.02em;
+  }
+
+  .qm-choices { display: flex; flex-direction: column; gap: 9px; margin-bottom: 18px; }
+  .qm-choice {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(80,200,80,0.18);
+    border-radius: 8px; padding: 11px 16px;
+    cursor: pointer; font-family: 'Georgia', serif;
+    font-size: 13px; color: #b8e8b8; text-align: left;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .qm-choice:hover { background: rgba(80,200,80,0.1); border-color: rgba(80,200,80,0.5); }
+  .qm-choice .choice-letter {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(80,200,80,0.12); border: 1px solid rgba(80,200,80,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: bold; color: rgba(80,200,80,0.8);
+  }
+  .qm-choice.correct {
+    background: rgba(40,160,40,0.25) !important; border-color: #40c840 !important;
+    color: #a0ffa0 !important;
+  }
+  .qm-choice.correct .choice-letter { background: rgba(40,160,40,0.5); border-color: #40c840; color: #80ff80; }
+  .qm-choice.wrong {
+    background: rgba(180,40,40,0.22) !important; border-color: #c84040 !important;
+    color: #ffa0a0 !important; opacity: 0.75;
+  }
+  .qm-choice.wrong .choice-letter { background: rgba(180,40,40,0.4); border-color: #c84040; color: #ff8080; }
+  .qm-choice:disabled, .qm-choice.answered { pointer-events: none; }
+
+  #qm-feedback {
+    min-height: 0; overflow: hidden; max-height: 0;
+    transition: max-height 0.35s ease, opacity 0.3s;
+    opacity: 0; border-radius: 8px;
+  }
+  #qm-feedback.show { max-height: 200px; opacity: 1; margin-bottom: 16px; }
+  .qm-fb-inner {
+    padding: 12px 16px; border-radius: 8px;
+    font-size: 13px; line-height: 1.7;
+  }
+  .qm-fb-inner.correct { background: rgba(20,100,20,0.4); border: 1px solid rgba(60,180,60,0.4); color: #b0ffb0; }
+  .qm-fb-inner.wrong   { background: rgba(100,20,20,0.4); border: 1px solid rgba(180,60,60,0.4); color: #ffb0b0; }
+  .qm-fb-title { font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+
+  .qm-footer { display: flex; justify-content: space-between; align-items: center; }
+  .qm-score { font-size: 11px; color: rgba(150,220,150,0.55); letter-spacing: 0.08em; }
+  .qm-nav { display: flex; gap: 8px; }
+  .qm-btn {
+    padding: 7px 18px; border-radius: 6px; cursor: pointer;
+    font-family: 'Georgia', serif; font-size: 12px; letter-spacing: 0.08em;
+    transition: background 0.15s; border: 1px solid rgba(80,200,80,0.3);
+    background: rgba(80,200,80,0.1); color: #80e080;
+  }
+  .qm-btn:hover { background: rgba(80,200,80,0.25); }
+  .qm-btn.secondary { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: rgba(200,230,200,0.5); }
+  .qm-btn.secondary:hover { background: rgba(255,255,255,0.09); }
+
+  /* Score summary */
+  #qm-summary { display: none; text-align: center; padding: 10px 0; }
+  #qm-summary .big-score { font-size: 48px; color: #80ff80; line-height: 1; margin-bottom: 8px; }
+  #qm-summary .score-label { font-size: 14px; color: rgba(150,220,150,0.7); margin-bottom: 16px; }
+  #qm-summary .score-msg { font-size: 14px; line-height: 1.7; color: #c0e8c0; }
+
+  /* ══ QUIZ EDITOR ══════════════════════════════════════════════ */
+  #qe-modal {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%) scale(0.92);
+    background: rgba(14,10,4,0.98);
+    border: 1px solid rgba(220,170,60,0.35);
+    border-radius: 16px; padding: 0;
+    color: #f0e0b0; width: 580px; max-width: 95vw;
+    max-height: 88vh; display: flex; flex-direction: column;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    backdrop-filter: blur(20px); z-index: 300;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.7);
+  }
+  #qe-modal.show { opacity: 1; pointer-events: all; transform: translate(-50%,-50%) scale(1); }
+
+  /* header */
+  .qe-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 18px 24px 14px; border-bottom: 1px solid rgba(220,170,60,0.18);
+    flex-shrink: 0;
+  }
+  .qe-header h3 { font-size: 15px; color: #f0c840; letter-spacing: 0.1em; margin: 0; }
+  #qe-close { cursor: pointer; color: rgba(220,170,80,0.4); font-size: 18px; transition: color 0.15s; }
+  #qe-close:hover { color: rgba(255,100,100,0.9); }
+
+  /* toolbar */
+  .qe-toolbar {
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 24px; border-bottom: 1px solid rgba(220,170,60,0.12);
+    flex-shrink: 0; flex-wrap: wrap;
+  }
+  .qe-toolbar label { font-size: 11px; opacity: 0.5; letter-spacing: 0.1em; }
+  #qe-obj-select {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(220,170,60,0.25);
+    border-radius: 5px; padding: 6px 10px; color: #f0e0b0;
+    font-family: 'Georgia', serif; font-size: 12px; outline: none; cursor: pointer;
+  }
+  #qe-obj-select option { background: #1a1208; }
+  .qe-toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+  .qe-tbtn {
+    padding: 6px 14px; border-radius: 5px; cursor: pointer;
+    font-family: 'Georgia', serif; font-size: 12px; letter-spacing: 0.06em;
+    transition: background 0.15s;
+  }
+  .qe-tbtn.add {
+    background: rgba(220,170,60,0.15); border: 1px solid rgba(220,170,60,0.4); color: #f0c840;
+  }
+  .qe-tbtn.add:hover { background: rgba(220,170,60,0.3); }
+  .qe-tbtn.save {
+    background: rgba(60,180,60,0.2); border: 1px solid rgba(80,200,80,0.4); color: #80e080;
+  }
+  .qe-tbtn.save:hover { background: rgba(60,180,60,0.38); }
+
+  /* question list */
+  .qe-list {
+    overflow-y: auto; flex: 1; padding: 12px 16px;
+    scrollbar-width: thin; scrollbar-color: rgba(220,170,60,0.2) transparent;
+  }
+
+  /* single question card */
+  .qe-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(220,170,60,0.14);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+    transition: border-color 0.2s;
+  }
+  .qe-card:hover { border-color: rgba(220,170,60,0.3); }
+  .qe-card-head {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+  }
+  .qe-card-num { font-size: 10px; color: rgba(220,170,60,0.5); letter-spacing: 0.12em; text-transform: uppercase; }
+  .qe-del-btn {
+    cursor: pointer; color: rgba(255,100,100,0.45); font-size: 14px;
+    padding: 0 4px; transition: color 0.15s; line-height: 1;
+  }
+  .qe-del-btn:hover { color: rgba(255,80,80,0.9); }
+
+  .qe-field { margin-bottom: 8px; }
+  .qe-field label { display: block; font-size: 10px; opacity: 0.45; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 3px; }
+  .qe-input {
+    width: 100%; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(220,170,60,0.18); border-radius: 5px;
+    padding: 7px 10px; color: #f0e0b0; font-family: 'Georgia', serif;
+    font-size: 12px; outline: none; box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+  .qe-input:focus { border-color: rgba(220,170,60,0.6); }
+  .qe-textarea { resize: vertical; min-height: 54px; }
+
+  /* choices grid */
+  .qe-choices-grid { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+  .qe-choice-row { display: flex; gap: 6px; align-items: center; }
+  .qe-choice-letter {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(220,170,60,0.1); border: 1px solid rgba(220,170,60,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: bold; color: rgba(220,170,60,0.6);
+  }
+  .qe-radio {
+    width: 16px; height: 16px; cursor: pointer; accent-color: #c8a030; flex-shrink: 0;
+  }
+  .qe-radio-label { font-size: 10px; opacity: 0.4; white-space: nowrap; flex-shrink: 0; }
+
+  /* empty state */
+  .qe-empty {
+    text-align: center; padding: 40px 20px; opacity: 0.35;
+    font-size: 13px; font-style: italic;
+  }
+
+  /* save toast */
+  #qe-saved-toast {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,80,20,0.95); border: 1px solid rgba(80,200,80,0.5);
+    border-radius: 6px; padding: 8px 20px; color: #80ff80; font-size: 12px;
+    pointer-events: none; opacity: 0; transition: opacity 0.3s; white-space: nowrap;
+    letter-spacing: 0.06em;
+  }
+  #qe-saved-toast.show { opacity: 1; }
+
+  /* ══ MOBILE JOYSTICK & RESPONSIVE ════════════════════════════ */
+  #joystick-zone {
+    position: absolute; bottom: 28px; left: 28px;
+    width: 110px; height: 110px;
+    display: none; z-index: 80; touch-action: none; user-select: none;
+  }
+  #joystick-base {
+    width: 110px; height: 110px; border-radius: 50%;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(255,255,255,0.2);
+    position: absolute; top: 0; left: 0;
+  }
+  #joystick-stick {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,220,150,0.35);
+    border: 2px solid rgba(255,220,150,0.6);
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    pointer-events: none;
+  }
+  #tap-btn {
+    position: absolute; bottom: 28px; right: 28px;
+    width: 64px; height: 64px; border-radius: 50%;
+    background: rgba(255,220,150,0.18);
+    border: 2px solid rgba(255,220,150,0.4);
+    color: rgba(255,220,150,0.9); font-size: 24px;
+    display: none; align-items: center; justify-content: center;
+    z-index: 80; touch-action: manipulation; cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+  @media (pointer: coarse) {
+    #joystick-zone { display: block; }
+    #tap-btn { display: flex; }
+    #hud { display: none; }
+    #toolbar { top: auto; bottom: 155px; right: 8px; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .tb-btn { font-size: 11px; padding: 8px 12px; }
+    #crosshair { display: none; }
+  }</style>
+</head>
+<body>
+<div id="canvas-container">
+  <div id="hud">
+    <span>W A S D</span> / ลูกศร = เดิน &nbsp;|&nbsp; <span>ลากเมาส์</span> = มองรอบ &nbsp;|&nbsp; <span>คลิก</span> = ดูรายละเอียดผลงาน
+  </div>
+  // แก้1
+  <div id="toolbar">
+    <button id="lock-btn" class="tb-btn" onclick="teacherLogin()" style="border:1px solid rgba(200,170,100,0.35);color:rgba(220,200,160,0.9);">🔑 ครู</button>
+    <button id="quiz-btn" class="tb-btn" onclick="toggleQuizMode()">🧩 โหมดทดสอบ</button>
+    <button id="edit-btn" class="tb-btn" onclick="toggleEditMode()" style="display:none">✏️ แก้ไขภาพ</button>
+    <button id="clear-btn" class="tb-btn" onclick="clearSavedData()" style="display:none">🗑</button>
+    <button id="pw-btn" class="tb-btn" onclick="openChangePwModal()" style="display:none;border:1px solid rgba(200,170,100,0.35);color:rgba(220,200,160,0.9);">⚙️ เปลี่ยนรหัส</button>
+  </div>
+  //
+
+  <div id="quiz-hint">✦ คลิกที่ภาพหรือประติมากรรมเพื่อทำแบบทดสอบ</div>
+  <div id="edit-hint">✦ ดับเบิลคลิกที่กรอบภาพเพื่ออัปโหลดรูปของคุณ</div>
+
+  <!-- Model Upload Modal -->
+  <div id="model-modal">
+    <h3>📦 เพิ่ม 3D Model</h3>
+    <div class="subtitle">วางโมเดลตรงหน้าคุณในพิพิธภัณฑ์</div>
+
+    <!-- Tab switcher -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <button class="model-tab active" id="tab-file" onclick="switchModelTab('file')">📁 อัปโหลดไฟล์</button>
+      <button class="model-tab" id="tab-url" onclick="switchModelTab('url')">🔗 โหลดจาก URL</button>
+    </div>
+
+    <div id="model-spinner"></div>
+
+    <!-- File tab -->
+    <div id="model-tab-file">
+      <div id="model-drop"
+           onclick="document.getElementById('model-file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="handleModelDrop(event)">
+        <div class="icon">🗂️</div>
+        <div class="label">คลิกหรือลากไฟล์มาวาง</div>
+        <div class="sublabel">รองรับ .OBJ · .GLTF · .GLB</div>
+      </div>
+      <input type="file" id="model-file-input" accept=".obj,.gltf,.glb" onchange="handleModelFile(event)"/>
+    </div>
+
+    <!-- URL tab -->
+    <div id="model-tab-url" style="display:none">
+      <div style="margin-bottom:10px;font-size:11px;opacity:0.5;line-height:1.7;">
+        วางลิงก์ไฟล์ .glb / .gltf / .obj<br>
+        เช่น <span style="color:#80b8ff">https://yoursite.netlify.app/models/armor.glb</span>
+      </div>
+      <input class="model-input" id="model-url-input" type="url"
+        placeholder="https://..."
+        style="width:100%;margin-bottom:8px;"
+      />
+      <button class="model-tab active" style="width:100%;padding:9px;"
+        onclick="loadModelFromURL()">🔗 โหลดโมเดล</button>
+    </div>
+
+    <div class="model-row" style="margin-top:12px;">
+      <label>ชื่อ</label>
+      <input class="model-input" id="model-name-input" placeholder="ชื่อโมเดล..." type="text"/>
+    </div>
+    <div class="scale-row">
+      <label>ขนาด</label>
+      <input type="range" id="model-scale" min="1" max="200" value="100" oninput="document.getElementById('scale-val').textContent=this.value+'%'"/>
+      <span id="scale-val">100%</span>
+    </div>
+    <div id="model-status"></div>
+    <div class="model-btns">
+      <button id="model-confirm" onclick="placeModel()">✓ วางในห้อง</button>
+      <button id="model-cancel-btn" onclick="closeModelModal()">✕ ยกเลิก</button>
+    </div>
+  </div>
+
+  <!-- Placed models panel -->
+  <div id="models-list">
+    <h4>📦 โมเดลในห้อง</h4>
+    <div id="models-list-inner"></div>
+  </div>
+  <div id="crosshair"></div>
+
+  <!-- Mobile Joystick -->
+  <div id="joystick-zone">
+    <div id="joystick-base"></div>
+    <div id="joystick-stick"></div>
+  </div>
+  <!-- Mobile tap-to-interact -->
+  <div id="tap-btn" onclick="mobileTap()">👆</div>
+
+  <!-- Upload Modal -->
+  <div id="upload-modal">
+    <h3>อัปโหลดภาพใหม่</h3>
+    <p id="modal-slot-name">กรอบที่เลือก: —</p>
+    <img id="upload-preview" alt="preview"/>
+    <div id="upload-drop" onclick="document.getElementById('file-input').click()"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop(event)">
+      <div class="icon">🖼️</div>
+      <div class="label">คลิกหรือลากไฟล์มาวาง</div>
+      <div class="sublabel">รองรับ JPG, PNG, GIF, WEBP</div>
+    </div>
+    <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)"/>
+    <input type="text" id="upload-title-input" placeholder="ชื่อผลงาน..."/>
+    <textarea id="upload-desc-input" placeholder="คำอธิบาย..."></textarea>
+
+    <div id="audio-upload-section">
+      <div class="section-label">🎵 เสียงประกอบ</div>
+      <div id="audio-drop"
+           onclick="document.getElementById('audio-file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="handleAudioDrop(event)">
+        <div class="audio-icon">🎵</div>
+        <div>
+          <div class="audio-label">คลิกหรือลากไฟล์เสียงมาวาง</div>
+          <div class="audio-sublabel">รองรับ MP3, WAV, OGG, M4A</div>
+        </div>
+      </div>
+      <input type="file" id="audio-file-input" accept="audio/*" onchange="handleAudioFileSelect(event)"/>
+      <div id="audio-name-display"></div>
+      <div style="text-align:center">
+        <button id="audio-remove-btn" onclick="removeAudio()">✕ ลบเสียง</button>
+      </div>
+    </div>
+
+    <div class="upload-btns">
+      <button id="upload-confirm" onclick="confirmUpload()">✓ บันทึก</button>
+      <button id="upload-cancel" onclick="closeUploadModal()">✕ ยกเลิก</button>
+    </div>
+  </div>
+
+  <!-- Transform Gizmo Panel -->
+  <div id="transform-panel">
+    <div class="tp-title">
+      🎛 Transform &nbsp;<span id="tp-model-name">—</span>
+      <div id="tp-close" onclick="deselectModel()">✕</div>
+    </div>
+
+    <div class="tp-mode-row">
+      <button class="tp-mode-btn active" id="tpm-move" onclick="setTransformMode('move')">↔ ย้าย</button>
+      <button class="tp-mode-btn" id="tpm-rotate" onclick="setTransformMode('rotate')">↻ หมุน</button>
+      <button class="tp-mode-btn" id="tpm-scale" onclick="setTransformMode('scale')">⤢ ขนาด</button>
+    </div>
+
+    <!-- Move -->
+    <div id="tp-move-section">
+      <div class="tp-row">
+        <div class="tp-label">← →</div>
+        <button class="tp-btn" onmousedown="startTransform('x',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('x',-1)" ontouchend="stopTransform()">◀ ซ้าย</button>
+        <button class="tp-btn" onmousedown="startTransform('x', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('x', 1)" ontouchend="stopTransform()">ขวา ▶</button>
+      </div>
+      <div class="tp-row">
+        <div class="tp-label">↑ ↓</div>
+        <button class="tp-btn" onmousedown="startTransform('y', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('y', 1)" ontouchend="stopTransform()">▲ ขึ้น</button>
+        <button class="tp-btn" onmousedown="startTransform('y',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('y',-1)" ontouchend="stopTransform()">▼ ลง</button>
+      </div>
+      <div class="tp-row">
+        <div class="tp-label">⇅ ลึก</div>
+        <button class="tp-btn" onmousedown="startTransform('z',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('z',-1)" ontouchend="stopTransform()">▲ หน้า</button>
+        <button class="tp-btn" onmousedown="startTransform('z', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('z', 1)" ontouchend="stopTransform()">▼ หลัง</button>
+      </div>
+    </div>
+
+    <!-- Rotate -->
+    <div id="tp-rotate-section" style="display:none">
+      <div class="tp-row">
+        <div class="tp-label">แกน Y</div>
+        <button class="tp-btn" onmousedown="startTransform('ry',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('ry',-1)" ontouchend="stopTransform()">↺ ซ้าย</button>
+        <button class="tp-btn" onmousedown="startTransform('ry', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('ry', 1)" ontouchend="stopTransform()">↻ ขวา</button>
+      </div>
+      <div class="tp-row">
+        <div class="tp-label">แกน X</div>
+        <button class="tp-btn" onmousedown="startTransform('rx',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('rx',-1)" ontouchend="stopTransform()">↑ ก้ม</button>
+        <button class="tp-btn" onmousedown="startTransform('rx', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('rx', 1)" ontouchend="stopTransform()">↓ เงย</button>
+      </div>
+      <div class="tp-row">
+        <div class="tp-label">แกน Z</div>
+        <button class="tp-btn" onmousedown="startTransform('rz',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('rz',-1)" ontouchend="stopTransform()">↺ ม้วน</button>
+        <button class="tp-btn" onmousedown="startTransform('rz', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('rz', 1)" ontouchend="stopTransform()">↻ ม้วน</button>
+      </div>
+    </div>
+
+    <!-- Scale -->
+    <div id="tp-scale-section" style="display:none">
+      <div class="tp-row">
+        <div class="tp-label">ขนาด</div>
+        <button class="tp-btn" onmousedown="startTransform('s', 1)" onmouseup="stopTransform()" ontouchstart="startTransform('s', 1)" ontouchend="stopTransform()">＋ ใหญ่ขึ้น</button>
+        <button class="tp-btn" onmousedown="startTransform('s',-1)" onmouseup="stopTransform()" ontouchstart="startTransform('s',-1)" ontouchend="stopTransform()">－ เล็กลง</button>
+      </div>
+      <div class="tp-row">
+        <div class="tp-label">รีเซต</div>
+        <button class="tp-btn" onclick="resetModelScale()">⟳ คืนขนาดเดิม</button>
+      </div>
+    </div>
+
+    <div class="tp-sep"></div>
+    <div class="tp-row">
+      <button class="tp-btn" onclick="snapModelToFloor()">⬇ Snap พื้น</button>
+      <button class="tp-btn danger" onclick="deleteSelectedModel()">🗑 ลบโมเดล</button>
+    </div>
+
+    <!-- Position readout -->
+    <div class="tp-sep"></div>
+    <div id="tp-pos-display" style="
+      font-size:10px; color:rgba(100,160,255,0.7);
+      background:rgba(0,0,0,0.3); border-radius:6px;
+      padding:7px 10px; margin-bottom:6px; line-height:1.8;
+      font-family:monospace; letter-spacing:0.04em;
+    ">—</div>
+    <button class="tp-btn" onclick="copyModelPosition()" style="width:100%;margin-bottom:4px;">
+      📋 Copy ตำแหน่ง (ส่งให้ Claude)
+    </button>
+
+    <div class="tp-hint">กดค้างปุ่มเพื่อเลื่อนต่อเนื่อง</div>
+  </div>
+
+  <!-- Quiz Modal -->
+  <div id="quiz-modal">
+    <div id="qm-body">
+      <div class="qm-header">
+        <div>
+          <div class="qm-tag">🧩 แบบทดสอบพิพิธภัณฑ์</div>
+          <div class="qm-artwork" id="qm-artwork-name">—</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          //แก้2
+          <button class="qm-btn secondary" id="qm-edit-btn" onclick="openQuizEditor()" style="padding:4px 10px;font-size:11px;display:none">✏️ แก้คำถาม</button>
+          //
+          
+          <div id="qm-close" onclick="closeQuizModal()">✕</div>
+        </div>
+      </div>
+      <div id="qm-question">—</div>
+      <div class="qm-choices" id="qm-choices"></div>
+      <div id="qm-feedback"><div class="qm-fb-inner" id="qm-fb-inner"></div></div>
+      <div class="qm-footer">
+        <div class="qm-score" id="qm-score">คะแนน: 0 / 0</div>
+        <div class="qm-nav">
+          <button class="qm-btn secondary" id="qm-skip" onclick="quizSkip()">ข้าม →</button>
+          <button class="qm-btn" id="qm-next" onclick="quizNext()" style="display:none">ถัดไป →</button>
+        </div>
+      </div>
+    </div>
+    <div id="qm-summary">
+      <div class="big-score" id="qm-big-score">0%</div>
+      <div class="score-label" id="qm-score-label">—</div>
+      <div class="score-msg" id="qm-score-msg">—</div>
+      <div style="margin-top:18px; display:flex; gap:10px; justify-content:center;">
+        <button class="qm-btn" onclick="quizRestart()">🔄 เล่นใหม่</button>
+        //แก้2
+        <button class="qm-btn secondary" id="qm-edit-btn2" onclick="openQuizEditor()" style="display:none">✏️ แก้คำถาม</button>
+        //
+        
+        <button class="qm-btn secondary" onclick="closeQuizModal()">✕ ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quiz Editor Modal -->
+  <div id="qe-modal">
+    <div class="qe-header">
+      <h3>✏️ แก้ไขคำถาม Quiz</h3>
+      <div id="qe-close" onclick="closeQuizEditor()">✕</div>
+    </div>
+    <div class="qe-toolbar">
+      <label>ผลงาน:</label>
+      <select id="qe-obj-select" onchange="qeLoadObject()"></select>
+      <div class="qe-toolbar-right">
+        <button class="qe-tbtn add" onclick="qeAddQuestion()">＋ เพิ่มคำถาม</button>
+        <button class="qe-tbtn save" onclick="qeSave()">✓ บันทึก</button>
+      </div>
+    </div>
+    <div class="qe-list" id="qe-list"></div>
+    <div id="qe-saved-toast">✓ บันทึกแล้ว!</div>
+  </div>
+
+  //แก้3
+  <div id="pw-modal" style="
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%) scale(0.92);
+    background:rgba(14,11,7,0.97);
+    border:1px solid rgba(200,170,100,0.4);
+    border-radius:12px;padding:28px 32px 24px;
+    color:#e8dfc8;min-width:300px;
+    opacity:0;pointer-events:none;
+    transition:opacity 0.25s,transform 0.25s;
+    backdrop-filter:blur(16px);z-index:400;
+    text-align:center;">
+    <h3 style="color:#f0d080;font-size:16px;letter-spacing:0.12em;margin-bottom:18px;">⚙️ เปลี่ยนรหัสผ่าน</h3>
+    <input id="pw-old" type="password" placeholder="รหัสผ่านเดิม..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(200,170,100,0.25);border-radius:5px;padding:8px 12px;color:#e8dfc8;font-family:Georgia,serif;font-size:13px;margin-bottom:10px;outline:none;box-sizing:border-box;"/>
+    <input id="pw-new" type="password" placeholder="รหัสผ่านใหม่..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(200,170,100,0.25);border-radius:5px;padding:8px 12px;color:#e8dfc8;font-family:Georgia,serif;font-size:13px;margin-bottom:10px;outline:none;box-sizing:border-box;"/>
+    <input id="pw-confirm" type="password" placeholder="ยืนยันรหัสผ่านใหม่..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(200,170,100,0.25);border-radius:5px;padding:8px 12px;color:#e8dfc8;font-family:Georgia,serif;font-size:13px;margin-bottom:18px;outline:none;box-sizing:border-box;"/>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button onclick="confirmChangePw()" style="padding:8px 22px;border-radius:5px;font-family:Georgia,serif;font-size:13px;cursor:pointer;background:rgba(200,170,100,0.22);border:1px solid rgba(200,170,100,0.5);color:#f0d080;">✓ บันทึก</button>
+      <button onclick="closeChangePwModal()" style="padding:8px 22px;border-radius:5px;font-family:Georgia,serif;font-size:13px;cursor:pointer;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(220,200,160,0.6);">✕ ยกเลิก</button>
+    </div>
+  </div>
+  //
+  <div id="info-panel">
+
+
+    <div id="info-text">
+      <h2 id="info-title">—</h2>
+      <p id="info-desc">—</p>
+      <div class="meta" id="info-meta">—</div>
+    </div>
+    <button id="close-btn" onclick="closeInfo()">✕ ปิด</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+// จุดเริ่มแก้ฉาก
+// ─── SCENE SETUP ────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0806);
+scene.fog = new THREE.Fog(0x1a1208, 12, 28);
+
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.05, 60);
+camera.position.set(0, 1.65, 6);
+
+// ─── PROCEDURAL TEXTURES ────────────────────────────────────────────────────
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return [c, c.getContext('2d')];
+}
+
+function texFromCanvas(c) {
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+
+// Wood parquet floor
+function woodParquetTex(W=512,H=512) {
+  const [c,cx] = makeCanvas(W,H);
+  const pw=64,ph=32;
+  for(let gy=0;gy<H/ph;gy++) for(let gx=0;gx<W/pw;gx++) {
+    const offset = gy%2===0?0:pw/2;
+    const rx=(gx*pw+offset)%W, ry=gy*ph;
+    const hue=25+Math.random()*12, sat=55+Math.random()*15, li=28+Math.random()*14;
+    cx.fillStyle=`hsl(${hue},${sat}%,${li}%)`;
+    cx.fillRect(rx,ry,pw-1,ph-1);
+    cx.strokeStyle=`hsl(${hue},${sat}%,${li-8}%)`;
+    cx.lineWidth=0.7;
+    const grains=6+Math.floor(Math.random()*6);
+    for(let g=0;g<grains;g++){
+      const gx2=rx+Math.random()*pw, gy2=ry, len=ph*(0.5+Math.random()*0.5);
+      cx.beginPath();cx.moveTo(gx2,gy2);
+      cx.bezierCurveTo(gx2+(Math.random()-0.5)*4,gy2+len*0.3,gx2+(Math.random()-0.5)*4,gy2+len*0.7,gx2+(Math.random()-0.5)*3,gy2+len);
+      cx.stroke();
+    }
+  }
+  return texFromCanvas(c);
+}
+
+// Plaster wall
+function plasterTex(W=512,H=512) {
+  const [c,cx] = makeCanvas(W,H);
+  cx.fillStyle='#d4cec4';cx.fillRect(0,0,W,H);
+  for(let i=0;i<180;i++){
+    const x=Math.random()*W,y=Math.random()*H,r=8+Math.random()*24;
+    const g=cx.createRadialGradient(x,y,0,x,y,r);
+    const a=(Math.random()*0.07+0.01).toFixed(3);
+    g.addColorStop(0,`rgba(180,170,155,${a})`);
+    g.addColorStop(1,'rgba(212,206,196,0)');
+    cx.fillStyle=g;cx.beginPath();cx.arc(x,y,r,0,Math.PI*2);cx.fill();
+  }
+  // fine grain
+  for(let i=0;i<3000;i++){
+    const x=Math.random()*W,y=Math.random()*H;
+    const v=Math.floor(160+Math.random()*40);
+    cx.fillStyle=`rgba(${v},${v-10},${v-20},0.18)`;
+    cx.fillRect(x,y,1,1);
+  }
+  // trowel marks
+  cx.strokeStyle='rgba(140,130,115,0.10)'; cx.lineWidth=1.5;
+  for(let i=0;i<30;i++){
+    const x=Math.random()*W,y=Math.random()*H,len=30+Math.random()*80,ang=Math.random()*Math.PI;
+    cx.beginPath();cx.moveTo(x,y);cx.lineTo(x+Math.cos(ang)*len,y+Math.sin(ang)*len);cx.stroke();
+  }
+  return texFromCanvas(c);
+}
+
+// Coffered ceiling
+function cofferedTex(W=512,H=512) {
+  const [c,cx] = makeCanvas(W,H);
+  cx.fillStyle='#f0ebe0';cx.fillRect(0,0,W,H);
+  const g=8,cw=W/g,ch=H/g;
+  for(let gy=0;gy<g;gy++) for(let gx=0;gx<g;gx++){
+    const x=gx*cw,y=gy*ch,d=cw*0.12;
+    // outer border
+    cx.strokeStyle='rgba(180,170,150,0.6)';cx.lineWidth=3;
+    cx.strokeRect(x+2,y+2,cw-4,ch-4);
+    // inner inset
+    cx.strokeStyle='rgba(160,148,128,0.4)';cx.lineWidth=1.5;
+    cx.strokeRect(x+d,y+d,cw-d*2,ch-d*2);
+    // center panel shadow
+    const grad=cx.createLinearGradient(x+d,y+d,x+d,y+ch-d);
+    grad.addColorStop(0,'rgba(230,225,210,0.9)');
+    grad.addColorStop(1,'rgba(200,195,180,0.9)');
+    cx.fillStyle=grad;cx.fillRect(x+d+1,y+d+1,cw-d*2-2,ch-d*2-2);
+  }
+  return texFromCanvas(c);
+}
+
+// Marble
+function marbleTex(W=512,H=512,base='#f5f0e8') {
+  const [c,cx] = makeCanvas(W,H);
+  cx.fillStyle=base;cx.fillRect(0,0,W,H);
+  // veins
+  for(let v=0;v<18;v++){
+    cx.strokeStyle=`rgba(180,170,155,${0.1+Math.random()*0.2})`;
+    cx.lineWidth=0.5+Math.random()*2;
+    cx.beginPath();
+    let x=Math.random()*W,y=0;
+    cx.moveTo(x,y);
+    for(let s=0;s<12;s++){
+      x+=( Math.random()-0.5)*60; y+=H/12;
+      cx.lineTo(x+( Math.random()-0.5)*20,y);
+    }
+    cx.stroke();
+  }
+  // noise
+  for(let i=0;i<1500;i++){
+    const x=Math.random()*W,y=Math.random()*H,v2=220+Math.floor(Math.random()*30);
+    cx.fillStyle=`rgba(${v2},${v2-5},${v2-10},0.06)`;cx.fillRect(x,y,2,2);
+  }
+  return texFromCanvas(c);
+}
+
+// Gold frame
+function goldTex(W=128,H=128) {
+  const [c,cx] = makeCanvas(W,H);
+  const g=cx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#a07020');g.addColorStop(0.2,'#f0c840');g.addColorStop(0.4,'#c89030');
+  g.addColorStop(0.6,'#f8e060');g.addColorStop(0.8,'#b07828');g.addColorStop(1,'#e0b040');
+  cx.fillStyle=g;cx.fillRect(0,0,W,H);
+  cx.strokeStyle='rgba(255,240,180,0.3)';cx.lineWidth=0.8;
+  for(let i=0;i<24;i++){
+    cx.beginPath();cx.moveTo(Math.random()*W,0);cx.lineTo(Math.random()*W,H);cx.stroke();
+  }
+  return texFromCanvas(c);
+}
+
+// Painting canvases
+function paintingTex(style, W=400,H=300) {
+  const [c,cx] = makeCanvas(W,H);
+  if(style==='impressionist'){
+    cx.fillStyle='#e8d8b0';cx.fillRect(0,0,W,H);
+    const cols=['#3a6e8a','#7ab8d0','#f0e080','#c8a030','#48904a','#d08040','#88c080','#e0b060'];
+    for(let i=0;i<700;i++){
+      cx.fillStyle=cols[Math.floor(Math.random()*cols.length)];
+      cx.save();cx.translate(Math.random()*W,Math.random()*H);cx.rotate(Math.random()*Math.PI);
+      cx.fillRect(-12,-3,20+Math.random()*14,3+Math.random()*4);cx.restore();
+    }
+    // sun
+    const sg=cx.createRadialGradient(W*0.75,H*0.25,0,W*0.75,H*0.25,50);
+    sg.addColorStop(0,'rgba(255,240,120,0.9)');sg.addColorStop(1,'rgba(255,200,50,0)');
+    cx.fillStyle=sg;cx.beginPath();cx.arc(W*0.75,H*0.25,50,0,Math.PI*2);cx.fill();
+  } else if(style==='portrait'){
+    const bg=cx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#2a1a08');bg.addColorStop(1,'#180e04');
+    cx.fillStyle=bg;cx.fillRect(0,0,W,H);
+    // face
+    cx.fillStyle='#d4a870';cx.beginPath();cx.ellipse(W/2,H*0.42,55,68,0,0,Math.PI*2);cx.fill();
+    cx.fillStyle='#c89050';cx.beginPath();cx.ellipse(W/2,H*0.42+20,55,48,0,0,Math.PI);cx.fill();
+    // neck
+    cx.fillStyle='#d4a870';cx.fillRect(W/2-18,H*0.62,36,40);
+    // clothing
+    cx.fillStyle='#1a2850';cx.beginPath();cx.moveTo(W/2-60,H);cx.lineTo(W/2-30,H*0.72);cx.lineTo(W/2+30,H*0.72);cx.lineTo(W/2+60,H);cx.fill();
+    // hair
+    cx.fillStyle='#1a0e04';cx.beginPath();cx.ellipse(W/2,H*0.32,58,38,0,Math.PI,Math.PI*2);cx.fill();
+    // eyes
+    cx.fillStyle='#1a0e04';cx.beginPath();cx.ellipse(W/2-18,H*0.38,8,5,0,0,Math.PI*2);cx.fill();
+    cx.beginPath();cx.ellipse(W/2+18,H*0.38,8,5,0,0,Math.PI*2);cx.fill();
+    cx.fillStyle='#c8a060';cx.beginPath();cx.arc(W/2,H*0.46,8,0,Math.PI);cx.fill();
+    // highlight
+    cx.fillStyle='rgba(255,230,180,0.2)';cx.beginPath();cx.ellipse(W/2-12,H*0.36,20,28,-0.3,0,Math.PI*2);cx.fill();
+  } else if(style==='abstract'){
+    cx.fillStyle='#f8f4ee';cx.fillRect(0,0,W,H);
+    const ac=['#c03020','#e06010','#2040a0','#104080','#d0b000','#205820','#802060'];
+    for(let i=0;i<22;i++){
+      cx.fillStyle=ac[Math.floor(Math.random()*ac.length)];
+      cx.globalAlpha=0.5+Math.random()*0.5;
+      const t=Math.floor(Math.random()*3);
+      if(t===0){cx.fillRect(Math.random()*W-20,Math.random()*H-20,20+Math.random()*100,10+Math.random()*80);}
+      else if(t===1){cx.beginPath();cx.arc(Math.random()*W,Math.random()*H,10+Math.random()*50,0,Math.PI*2);cx.fill();}
+      else{cx.beginPath();const px=Math.random()*W,py=Math.random()*H;cx.moveTo(px,py);for(let j=0;j<5;j++)cx.lineTo(px+(Math.random()-0.5)*120,py+(Math.random()-0.5)*120);cx.closePath();cx.fill();}
+    }
+    cx.globalAlpha=1;
+    cx.strokeStyle='#1a1a1a';cx.lineWidth=3;
+    cx.strokeRect(W*0.1,H*0.15,W*0.3,H*0.6);
+    cx.strokeRect(W*0.55,H*0.2,W*0.32,H*0.25);
+  } else if(style==='landscape'){
+    const sky=cx.createLinearGradient(0,0,0,H*0.55);
+    sky.addColorStop(0,'#1a3a6a');sky.addColorStop(1,'#e8a040');
+    cx.fillStyle=sky;cx.fillRect(0,0,W,H*0.55);
+    // mountains
+    cx.fillStyle='#3a4a3a';
+    for(let m=0;m<4;m++){const mx=m*(W/3)-20;cx.beginPath();cx.moveTo(mx,H*0.55);cx.lineTo(mx+W/4,H*0.15+m*10);cx.lineTo(mx+W/2,H*0.55);cx.fill();}
+    // water
+    const water=cx.createLinearGradient(0,H*0.55,0,H);
+    water.addColorStop(0,'#1a3050');water.addColorStop(1,'#0a1828');
+    cx.fillStyle=water;cx.fillRect(0,H*0.55,W,H*0.45);
+    // reflection lines
+    cx.strokeStyle='rgba(200,180,100,0.3)';cx.lineWidth=1;
+    for(let r=0;r<12;r++){const ry=H*0.58+r*8;cx.beginPath();cx.moveTo(0,ry);cx.lineTo(W,ry);cx.stroke();}
+    // trees
+    cx.fillStyle='#1a2a1a';
+    for(let tr=0;tr<8;tr++){const tx=tr*(W/7),ty=H*0.45;cx.beginPath();cx.moveTo(tx,ty+60);cx.lineTo(tx+8,ty);cx.lineTo(tx+16,ty+60);cx.fill();}
+  } else if(style==='still_life'){
+    const bg2=cx.createLinearGradient(0,0,0,H);
+    bg2.addColorStop(0,'#2a1808');bg2.addColorStop(1,'#100804');
+    cx.fillStyle=bg2;cx.fillRect(0,0,W,H);
+    // table
+    cx.fillStyle='#3a2010';cx.fillRect(0,H*0.6,W,H*0.4);
+    // vase
+    cx.fillStyle='#4060a0';cx.beginPath();cx.moveTo(W/2-20,H*0.6);cx.bezierCurveTo(W/2-25,H*0.4,W/2-15,H*0.25,W/2,H*0.22);cx.bezierCurveTo(W/2+15,H*0.25,W/2+25,H*0.4,W/2+20,H*0.6);cx.fill();
+    // flowers
+    const fc=['#e04050','#f0a020','#c030a0','#40c060'];
+    for(let f=0;f<12;f++){const fx=W/2+(Math.random()-0.5)*40, fy=H*0.15+(Math.random()-0.5)*30;cx.fillStyle=fc[Math.floor(Math.random()*fc.length)];cx.beginPath();cx.arc(fx,fy,7+Math.random()*6,0,Math.PI*2);cx.fill();}
+    // fruit
+    cx.fillStyle='#d02020';cx.beginPath();cx.arc(W*0.3,H*0.63,18,0,Math.PI*2);cx.fill();
+    cx.fillStyle='#f0a030';cx.beginPath();cx.arc(W*0.68,H*0.63,14,0,Math.PI*2);cx.fill();
+  } else {
+    cx.fillStyle='#c8b89a';cx.fillRect(0,0,W,H);
+  }
+  return texFromCanvas(c);
+}
+
+// ─── TEXTURES ──────────────────────────────────────────────────────────────
+const floorTex = woodParquetTex(512,512);
+floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+floorTex.repeat.set(4,5);
+
+const wallTex = plasterTex(512,512);
+wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping;
+wallTex.repeat.set(2,1.5);
+
+const ceilTex = cofferedTex(512,512);
+ceilTex.wrapS = ceilTex.wrapT = THREE.RepeatWrapping;
+ceilTex.repeat.set(3,4);
+
+const marbleTex1 = marbleTex(256,256);
+const goldTex1 = goldTex(128,128);
+
+// ─── ROOM ──────────────────────────────────────────────────────────────────
+const RW=14, RH=6, RD=18;
+
+// Floor
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(RW,RD),
+  new THREE.MeshStandardMaterial({map:floorTex,roughness:0.6,metalness:0.05})
+);
+floor.rotation.x=-Math.PI/2; floor.receiveShadow=true;
+scene.add(floor);
+
+// Ceiling
+const ceil = new THREE.Mesh(
+  new THREE.PlaneGeometry(RW,RD),
+  new THREE.MeshStandardMaterial({map:ceilTex,roughness:0.9,metalness:0})
+);
+ceil.rotation.x=Math.PI/2; ceil.position.y=RH; ceil.receiveShadow=true;
+scene.add(ceil);
+
+// Walls
+const wallMat = new THREE.MeshStandardMaterial({map:wallTex,roughness:0.92,metalness:0});
+const walls = [
+  {w:RW,h:RH,pos:[0,RH/2,-RD/2],ry:0},
+  {w:RW,h:RH,pos:[0,RH/2,RD/2],ry:Math.PI},
+  {w:RD,h:RH,pos:[-RW/2,RH/2,0],ry:Math.PI/2},
+  {w:RD,h:RH,pos:[RW/2,RH/2,0],ry:-Math.PI/2},
+];
+walls.forEach(({w,h,pos,ry})=>{
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),wallMat);
+  m.position.set(...pos);m.rotation.y=ry;m.receiveShadow=true;scene.add(m);
+});
+
+// Skirting boards
+const skirtMat = new THREE.MeshStandardMaterial({map:marbleTex1,roughness:0.3,metalness:0.1});
+const skirts=[
+  {w:RW,d:0.05,pos:[0,0.1,-RD/2+0.03],ry:0},
+  {w:RW,d:0.05,pos:[0,0.1,RD/2-0.03],ry:Math.PI},
+  {w:RD,d:0.05,pos:[-RW/2+0.03,0.1,0],ry:Math.PI/2},
+  {w:RD,d:0.05,pos:[RW/2-0.03,0.1,0],ry:-Math.PI/2},
+];
+skirts.forEach(({w,pos,ry})=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,0.22,0.06),skirtMat);
+  m.position.set(...pos);m.rotation.y=ry;scene.add(m);
+});
+
+// ─── MARBLE COLUMNS ────────────────────────────────────────────────────────
+const colPos=[[-5.5,0,-7.5],[5.5,0,-7.5],[-5.5,0,7.5],[5.5,0,7.5]];
+colPos.forEach(([x,y,z])=>{
+  // shaft
+  const col=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.32,RH,16),
+    new THREE.MeshStandardMaterial({map:marbleTex1,roughness:0.25,metalness:0.12}));
+  col.position.set(x,RH/2,z);col.castShadow=true;scene.add(col);
+  // capital
+  const cap=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.22,0.7),
+    new THREE.MeshStandardMaterial({map:marbleTex1,roughness:0.2,metalness:0.15}));
+  cap.position.set(x,RH-0.11,z);scene.add(cap);
+  // base
+  const base=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.18,0.7),
+    new THREE.MeshStandardMaterial({map:marbleTex1,roughness:0.2,metalness:0.15}));
+  base.position.set(x,0.09,z);scene.add(base);
+});
+
+// ─── BENCH ────────────────────────────────────────────────────────────────
+function makeBench(x,z,ry=0){
+  const woodM=new THREE.MeshStandardMaterial({map:woodParquetTex(256,256),roughness:0.7,metalness:0.02});
+  const darkM=new THREE.MeshStandardMaterial({color:0x1a0e04,roughness:0.8});
+  // seat
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.1,0.55),woodM);
+  seat.position.set(x,0.46,z);seat.rotation.y=ry;seat.castShadow=true;seat.receiveShadow=true;scene.add(seat);
+  // back
+  const back=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.5,0.07),woodM);
+  back.position.set(x,0.76,z+(ry===0?-0.24:0.24));back.rotation.y=ry;back.castShadow=true;scene.add(back);
+  // legs
+  [[-1,1],[-1,-1],[1,1],[1,-1]].forEach(([lx,lz])=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.46,8),darkM);
+    const offX=lx*1.0*Math.cos(ry)-lz*0.2*Math.sin(ry);
+    const offZ=lx*1.0*Math.sin(ry)+lz*0.2*Math.cos(ry);
+    leg.position.set(x+offX,0.23,z+offZ);leg.castShadow=true;scene.add(leg);
+  });
+}
+makeBench(0,1); makeBench(0,-1);
+
+// ─── ORIENTAL RUG ─────────────────────────────────────────────────────────
+function rugTex(W=512,H=512) {
+  const [c,cx]=makeCanvas(W,H);
+  cx.fillStyle='#8a1a1a';cx.fillRect(0,0,W,H);
+  cx.fillStyle='#6a1010';cx.fillRect(W*0.06,H*0.06,W*0.88,H*0.88);
+  cx.fillStyle='#c04020';cx.fillRect(W*0.12,H*0.12,W*0.76,H*0.76);
+  // border pattern
+  cx.strokeStyle='#f0c840';cx.lineWidth=3;
+  for(let i=0;i<24;i++){const bx=W*0.08+i*(W*0.84/23),by=H*0.08;cx.beginPath();cx.arc(bx,by,4,0,Math.PI*2);cx.fillStyle='#f0c840';cx.fill();}
+  // medallion
+  cx.strokeStyle='#f0c840';cx.lineWidth=2;
+  for(let a=0;a<8;a++){cx.save();cx.translate(W/2,H/2);cx.rotate(a*Math.PI/4);
+    cx.fillStyle='#d04030';cx.beginPath();cx.moveTo(0,0);cx.lineTo(20,60);cx.lineTo(-20,60);cx.fill();cx.restore();}
+  cx.fillStyle='#f0c840';cx.beginPath();cx.arc(W/2,H/2,22,0,Math.PI*2);cx.fill();
+  cx.fillStyle='#8a1a1a';cx.beginPath();cx.arc(W/2,H/2,12,0,Math.PI*2);cx.fill();
+  // small motifs
+  for(let gy=0;gy<4;gy++) for(let gx=0;gx<3;gx++){
+    const mx=W*0.2+gx*(W*0.3),my=H*0.2+gy*(H*0.2);
+    cx.strokeStyle='#f0c840';cx.lineWidth=1.5;
+    cx.beginPath();cx.moveTo(mx-8,my);cx.lineTo(mx+8,my);cx.moveTo(mx,my-8);cx.lineTo(mx,my+8);cx.stroke();
+    cx.beginPath();cx.arc(mx,my,5,0,Math.PI*2);cx.stroke();
+  }
+  return texFromCanvas(c);
+}
+const rug=new THREE.Mesh(new THREE.PlaneGeometry(4.5,3.5),
+  new THREE.MeshStandardMaterial({map:rugTex(),roughness:0.85,metalness:0}));
+rug.rotation.x=-Math.PI/2;rug.position.set(0,0.005,0);scene.add(rug);
+
+// ─── SIDE TABLE + VASE ────────────────────────────────────────────────────
+function makeTable(x,z){
+  const wm=new THREE.MeshStandardMaterial({map:woodParquetTex(128,128),roughness:0.65,metalness:0.04});
+  const top=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.05,0.5),wm);
+  top.position.set(x,0.75,z);top.castShadow=true;scene.add(top);
+  [[0.3,0.3],[0.3,-0.3],[-0.3,0.3],[-0.3,-0.3]].forEach(([lx,lz])=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.75,8),wm);
+    leg.position.set(x+lx,0.375,z+lz);leg.castShadow=true;scene.add(leg);
+  });
+  // vase
+  const vaseMat=new THREE.MeshStandardMaterial({color:0x2244aa,roughness:0.3,metalness:0.4});
+  const vase=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.08,0.35,12),vaseMat);
+  vase.position.set(x,0.95,z);vase.castShadow=true;scene.add(vase);
+  // flowers
+  const fc=['#e03050','#f09020','#c020a0','#30c050'];
+  for(let f=0;f<7;f++){
+    const fm=new THREE.Mesh(new THREE.SphereGeometry(0.028,8,8),
+      new THREE.MeshStandardMaterial({color:new THREE.Color(fc[f%fc.length]),roughness:0.9}));
+    fm.position.set(x+(Math.random()-0.5)*0.08,1.08+(Math.random()-0.5)*0.06,z+(Math.random()-0.5)*0.08);
+    scene.add(fm);
+    // stem
+    const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.005,0.12,4),
+      new THREE.MeshStandardMaterial({color:0x208030}));
+    stem.position.set(x+(Math.random()-0.5)*0.06,1.0,z+(Math.random()-0.5)*0.06);scene.add(stem);
+  }
+}
+makeTable(-5.5,0);makeTable(5.5,0);
+
+// ─── BOOKSHELF ────────────────────────────────────────────────────────────
+function makeBookshelf(x,z,ry){
+  const wm=new THREE.MeshStandardMaterial({color:0x3a1808,roughness:0.8,metalness:0.02});
+  const sh=new THREE.Mesh(new THREE.BoxGeometry(2.2,2.0,0.32),wm);
+  sh.position.set(x,1.0,z);sh.rotation.y=ry;sh.castShadow=true;sh.receiveShadow=true;scene.add(sh);
+  // shelves
+  for(let s=0;s<4;s++){
+    const shelf=new THREE.Mesh(new THREE.BoxGeometry(2.1,0.04,0.28),
+      new THREE.MeshStandardMaterial({color:0x5a2810,roughness:0.7}));
+    const sy=-0.85+s*0.55;
+    shelf.position.set(x,1.0+sy,z);shelf.rotation.y=ry;scene.add(shelf);
+    // books
+    const bcs=['#8a2020','#1a3a6a','#1a5a1a','#7a5a10','#4a1a4a','#2a3a2a','#6a3a10','#1a1a5a'];
+    let bx=-0.9;
+    while(bx<0.9){
+      const bw=0.05+Math.random()*0.1;
+      if(bx+bw>0.9) break;
+      const bh=0.28+Math.random()*0.2;
+      const book=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,0.2),
+        new THREE.MeshStandardMaterial({color:new THREE.Color(bcs[Math.floor(Math.random()*bcs.length)]),roughness:0.85}));
+      const offX=bx+bw/2, offZ=0;
+      if(ry===0) book.position.set(x+offX,1.0+sy+0.04+bh/2,z+offZ);
+      else book.position.set(x+offZ,1.0+sy+0.04+bh/2,z+offX);
+      book.castShadow=true;scene.add(book);
+      bx+=bw+0.005;
+    }
+  }
+}
+makeBookshelf(-5.2,-7.5,0);makeBookshelf(5.2,-7.5,0);
+
+// ─── FLOOR LAMPS ──────────────────────────────────────────────────────────
+function makeFloorLamp(x,z){
+  const poleMat=new THREE.MeshStandardMaterial({color:0x2a2010,metalness:0.7,roughness:0.3});
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.04,1.6,8),poleMat);
+  pole.position.set(x,0.8,z);scene.add(pole);
+  const shade=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.15,0.3,12,1,true),
+    new THREE.MeshStandardMaterial({color:0xf0d080,side:THREE.DoubleSide,roughness:0.9,transparent:true,opacity:0.9}));
+  shade.position.set(x,1.75,z);scene.add(shade);
+  const top=new THREE.Mesh(new THREE.CircleGeometry(0.22,12),
+    new THREE.MeshStandardMaterial({color:0xf0d080,roughness:0.9}));
+  top.rotation.x=-Math.PI/2;top.position.set(x,1.9,z);scene.add(top);
+  const bulb=new THREE.PointLight(0xffe8a0,1.2,4,1.5);
+  bulb.position.set(x,1.7,z);scene.add(bulb);
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,0.05,12),poleMat);
+  base.position.set(x,0.025,z);scene.add(base);
+}
+makeFloorLamp(-5.8,-7.8);makeFloorLamp(5.8,-7.8);
+
+// ─── LIGHTING ─────────────────────────────────────────────────────────────
+const ambient=new THREE.AmbientLight(0xffe8c8,0.65);scene.add(ambient);
+
+// ceiling lights
+const ceilLightPos=[[-4,5.8,-6],[0,5.8,-6],[4,5.8,-6],[-4,5.8,0],[0,5.8,0],[4,5.8,0],[-4,5.8,6],[0,5.8,6],[4,5.8,6]];
+ceilLightPos.forEach(([x,y,z])=>{
+  const pl=new THREE.PointLight(0xfff8e8,0.5,10,1.5);pl.position.set(x,y,z);
+  pl.castShadow=false;scene.add(pl);
+  // light fixture
+  const fix=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.08,0.12,8),
+    new THREE.MeshStandardMaterial({color:0xd0c0a0,metalness:0.6,roughness:0.4}));
+  fix.position.set(x,5.94,z);scene.add(fix);
+});
+
+// สิ้นสุดทางแก้
+
+//ห้ามแตะ
+// ─── ARTWORKS ─────────────────────────────────────────────────────────────
+const artworks = [
+  {id:'p1',type:'painting',title:'แสงยามเช้าที่แม่น้ำ',artist:'Claude Monet (style)',year:'1895',desc:'ภาพแสงเช้าที่เล่นกับผิวน้ำ เส้นพู่กันสั้นๆ สร้างความรู้สึกสั่นไหวของแสงในแบบ Impressionism',style:'impressionist',pos:[-4.8,2.5,-8.94],ry:0},
+  {id:'p2',type:'painting',title:'สตรีในสวน',artist:'Renoir (style)',year:'1882',desc:'ภาพบุคคลสตรีที่ห้อมล้อมด้วยดอกไม้ในสวน แสงอุ่นส่องผ่านใบไม้ สีสันนุ่มนวล',style:'portrait',pos:[-1.6,2.5,-8.94],ry:0},
+  {id:'p3',type:'painting',title:'Composition No. VII',artist:'Kandinsky (style)',year:'1913',desc:'ผลงาน Abstract ที่สำรวจความสัมพันธ์ระหว่างสี รูปทรง และจังหวะ ปราศจากการแสดงผลเชิงวัตถุ',style:'abstract',pos:[1.6,2.5,-8.94],ry:0},
+  {id:'p4',type:'painting',title:'ทะเลสาบยามโพล้เพล้',artist:'Corot (style)',year:'1870',desc:'ทิวทัศน์ยามพระอาทิตย์ตกดิน ภูเขาสะท้อนในน้ำ บรรยากาศเงียบสงบ',style:'landscape',pos:[4.8,2.5,-8.94],ry:0},
+  {id:'p5',type:'painting',title:'ดอกไม้ในแจกัน',artist:'Fantin-Latour (style)',year:'1888',desc:'Still Life คลาสสิก แสงนุ่มส่องดอกไม้สีต่างๆ ในแจกันสีน้ำเงิน บนโต๊ะไม้เก่า',style:'still_life',pos:[-6.94,2.5,0],ry:Math.PI/2},
+  {id:'p6',type:'painting',title:'The Wanderer',artist:'Friedrich (style)',year:'1818',desc:'บุรุษยืนบนยอดเขา มองดูทะเลหมอก ความยิ่งใหญ่ของธรรมชาติที่ทำให้มนุษย์รู้สึกเล็กน้อย',style:'landscape',pos:[6.94,2.5,0],ry:-Math.PI/2},
+];
+
+const interactables = [];
+
+artworks.forEach(art=>{
+  const W=art.style==='portrait'?0.8:1.2, H=0.85;
+  // canvas
+  const painting=new THREE.Mesh(
+    new THREE.PlaneGeometry(W,H),
+    new THREE.MeshStandardMaterial({map:paintingTex(art.style),roughness:0.85,metalness:0})
+  );
+  painting.position.set(...art.pos); painting.rotation.y=art.ry;
+  painting.position.y=art.pos[1];
+  scene.add(painting);
+
+  // gold frame
+  const frameDepth=0.04;
+  const frameParts=[
+    [W+0.12,0.07,frameDepth,0,(H+0.07)/2,0],
+    [W+0.12,0.07,frameDepth,0,-(H+0.07)/2,0],
+    [0.07,H,frameDepth,-(W+0.07)/2,0,0],
+    [0.07,H,frameDepth,(W+0.07)/2,0,0],
+  ];
+  frameParts.forEach(([fw,fh,fd,fx,fy,fz])=>{
+    const frame=new THREE.Mesh(new THREE.BoxGeometry(fw,fh,fd),
+      new THREE.MeshStandardMaterial({map:goldTex1,roughness:0.3,metalness:0.7}));
+    frame.position.set(art.pos[0]+fx*Math.cos(art.ry),art.pos[1]+fy,art.pos[2]+fx*Math.sin(art.ry)*-1);
+    frame.rotation.y=art.ry; scene.add(frame);
+  });
+
+  // spotlight
+  const spot=new THREE.SpotLight(0xffe8c0,2.5,6,0.35,0.4,1.5);
+  const sp=[...art.pos]; sp[1]+=2.5;
+  spot.position.set(sp[0],sp[1],sp[2]+(art.ry===0?0.5:0));
+  if(art.ry===Math.PI/2) spot.position.set(sp[0]+0.5,sp[1],sp[2]);
+  if(art.ry===-Math.PI/2) spot.position.set(sp[0]-0.5,sp[1],sp[2]);
+  spot.target.position.set(...art.pos);
+  spot.castShadow=true; spot.shadow.mapSize.set(512,512);
+  scene.add(spot); scene.add(spot.target);
+
+  // label
+  function labelTex(title,artist,year){
+    const [c,cx]=makeCanvas(280,70);
+    cx.fillStyle='rgba(20,16,10,0.88)';cx.roundRect(0,0,280,70,6);cx.fill();
+    cx.strokeStyle='rgba(180,140,60,0.5)';cx.lineWidth=1;cx.roundRect(2,2,276,66,5);cx.stroke();
+    cx.fillStyle='#e8d080';cx.font='bold 14px Georgia';cx.fillText(title,12,24);
+    cx.fillStyle='rgba(200,180,140,0.8)';cx.font='11px Georgia';cx.fillText(`${artist}  ·  ${year}`,12,44);
+    return texFromCanvas(c);
+  }
+  const lbl=new THREE.Mesh(new THREE.PlaneGeometry(0.72,0.18),
+    new THREE.MeshStandardMaterial({map:labelTex(art.title,art.artist,art.year),transparent:true,roughness:1}));
+  lbl.position.set(art.pos[0],art.pos[1]-H/2-0.14,art.pos[2]);
+  lbl.rotation.y=art.ry; scene.add(lbl);
+
+  painting.userData={...art};
+  interactables.push(painting);
+});
+
+// ─── SCULPTURES ───────────────────────────────────────────────────────────
+const sculptures = [
+  {id:'s1',title:'อิสรภาพ',artist:'Anonymous',year:'2024 BCE',desc:'ประติมากรรมนามธรรมที่แสดงถึงการลอยตัวของจิตใจ ออกจากพันธนาการทางกายภาพ',pos:[-3.5,0,3]},
+  {id:'s2',title:'ความสมดุล',artist:'Anonymous',year:'2024 BCE',desc:'รูปทรงที่สมดุลอย่างสมบูรณ์แบบ สื่อถึงความกลมกลืนระหว่างแรงตรงข้าม',pos:[0,0,3]},
+  {id:'s3',title:'การกลับคืน',artist:'Anonymous',year:'2024 BCE',desc:'ส่วนโค้งที่วนกลับมาหาตัวเอง เปรียบดังวัฏจักรแห่งชีวิตที่ไม่มีวันสิ้นสุด',pos:[3.5,0,3]},
+];
+
+sculptures.forEach(s=>{
+  // pedestal
+  const pedMat=new THREE.MeshStandardMaterial({map:marbleTex(128,128),roughness:0.3,metalness:0.08});
+  const ped=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.9,0.7),pedMat);
+  ped.position.set(s.pos[0],0.45,s.pos[2]);ped.castShadow=true;ped.receiveShadow=true;scene.add(ped);
+  // pedestal top trim
+  const trim=new THREE.Mesh(new THREE.BoxGeometry(0.76,0.06,0.76),pedMat);
+  trim.position.set(s.pos[0],0.93,s.pos[2]);scene.add(trim);
+
+  const sculMat=new THREE.MeshStandardMaterial({color:0xd8d0c0,roughness:0.4,metalness:0.2});
+  let sculMesh;
+  if(s.id==='s1'){
+    // abstract twist
+    const points=[];
+    for(let i=0;i<=20;i++){const t=i/20;points.push(new THREE.Vector2(0.08+Math.sin(t*Math.PI)*0.12,t*0.7));}
+    sculMesh=new THREE.Mesh(new THREE.LatheGeometry(points,16),sculMat);
+  } else if(s.id==='s2'){
+    sculMesh=new THREE.Mesh(new THREE.SphereGeometry(0.18,16,16),sculMat);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(0.25,0.04,12,24),sculMat);
+    ring.position.set(s.pos[0],1.3,s.pos[2]);ring.rotation.x=Math.PI/3;
+    ring.castShadow=true;scene.add(ring);
+  } else {
+    sculMesh=new THREE.Mesh(new THREE.TorusKnotGeometry(0.14,0.04,80,12,2,3),sculMat);
+  }
+  sculMesh.position.set(s.pos[0],1.2,s.pos[2]);sculMesh.castShadow=true;
+  scene.add(sculMesh);
+
+  // spotlight
+  const spot2=new THREE.SpotLight(0xfff0e0,1.8,5,0.4,0.5,1.5);
+  spot2.position.set(s.pos[0],4.5,s.pos[2]-1);
+  spot2.target.position.set(s.pos[0],1.2,s.pos[2]);
+  spot2.castShadow=true;scene.add(spot2);scene.add(spot2.target);
+
+  // label
+  function sculLabel(title,artist){
+    const [c,cx]=makeCanvas(220,55);
+    cx.fillStyle='rgba(18,14,8,0.88)';cx.roundRect(0,0,220,55,5);cx.fill();
+    cx.strokeStyle='rgba(200,200,200,0.3)';cx.lineWidth=1;cx.roundRect(2,2,216,51,4);cx.stroke();
+    cx.fillStyle='#e8e0d0';cx.font='bold 13px Georgia';cx.fillText(title,10,22);
+    cx.fillStyle='rgba(180,170,150,0.7)';cx.font='10px Georgia';cx.fillText(artist,10,40);
+    return texFromCanvas(c);
+  }
+  const lbl=new THREE.Mesh(new THREE.PlaneGeometry(0.56,0.14),
+    new THREE.MeshStandardMaterial({map:sculLabel(s.title,s.artist),transparent:true,roughness:1}));
+  lbl.position.set(s.pos[0],0.07,s.pos[2]+0.36);scene.add(lbl);
+
+  sculMesh.userData={...s,type:'sculpture'};
+  interactables.push(sculMesh);
+});
+
+// ─── DISPLAY CASE ────────────────────────────────────────────────────────
+{
+  const glassMat=new THREE.MeshStandardMaterial({color:0xb0d8f0,transparent:true,opacity:0.22,roughness:0,metalness:0.5,side:THREE.DoubleSide});
+  const frameMat2=new THREE.MeshStandardMaterial({color:0x888070,metalness:0.8,roughness:0.3});
+  const caseGroup=new THREE.Group();
+  caseGroup.position.set(0,0,-6);
+  // frame
+  const caseBox=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.2,0.8),
+    new THREE.MeshStandardMaterial({color:0x2a2018,roughness:0.7,metalness:0.3,wireframe:false}));
+  caseBox.position.y=0.6;caseGroup.add(caseBox);
+  // glass panels
+  [[0,0.6,0.4,0],[0,0.6,-0.4,0],[0.7,0.6,0,Math.PI/2],[-0.7,0.6,0,Math.PI/2]].forEach(([x,y,z,ry])=>{
+    const g=new THREE.Mesh(new THREE.PlaneGeometry(1.4*(ry===0?1:0.8/1.4*1.4),1.2),glassMat);
+    g.position.set(x,y,z);g.rotation.y=ry;caseGroup.add(g);
+  });
+  // top
+  const top2=new THREE.Mesh(new THREE.BoxGeometry(1.42,0.05,0.82),frameMat2);top2.position.y=1.225;caseGroup.add(top2);
+  // base pedestal
+  const base2=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.12,0.9),frameMat2);base2.position.y=0.06;caseGroup.add(base2);
+  // artifacts inside
+  const artColors=[0xc8a020,0x8060a0,0x206080];
+  const artShapes=[
+    new THREE.TorusGeometry(0.1,0.03,10,20),
+    new THREE.OctahedronGeometry(0.1),
+    new THREE.DodecahedronGeometry(0.08),
+  ];
+  artShapes.forEach((geo,i)=>{
+    const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:artColors[i],metalness:0.7,roughness:0.3}));
+    m.position.set(-0.35+i*0.35,0.22,0);caseGroup.add(m);
+  });
+  scene.add(caseGroup);
+
+  // display case spotlight
+  const spot3=new THREE.SpotLight(0xfff5e0,1.5,4,0.4,0.5,1.5);
+  spot3.position.set(0,4.5,-6);spot3.target.position.set(0,0.5,-6);
+  spot3.castShadow=true;scene.add(spot3);scene.add(spot3.target);
+
+  // label
+  function caseLabel(){
+    const [c,cx]=makeCanvas(280,60);
+    cx.fillStyle='rgba(18,14,8,0.88)';cx.roundRect(0,0,280,60,5);cx.fill();
+    cx.fillStyle='#e8d080';cx.font='bold 13px Georgia';cx.fillText('โบราณวัตถุ — Ancient Artifacts',10,24);
+    cx.fillStyle='rgba(200,180,140,0.7)';cx.font='10px Georgia';cx.fillText('สำริดยุคทองแดง · ประมาณ 2000 ปีก่อนคริสตกาล',10,44);
+    return texFromCanvas(c);
+  }
+  const lbl=new THREE.Mesh(new THREE.PlaneGeometry(0.72,0.15),
+    new THREE.MeshStandardMaterial({map:caseLabel(),transparent:true,roughness:1}));
+  lbl.position.set(0,0.06,-5.61);scene.add(lbl);
+}
+
+
+
+// ─── RAYCASTER & INTERACTION ───────────────────────────────────────────────
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2(0,0);
+let infoVisible=false;
+let editMode=false;
+let pendingMesh=null;
+let pendingImageDataUrl=null;
+let pendingImageFile=null;     // File object ของรูปที่รออัปโหลด
+let pendingAudioDataUrl=null;  // base64 data URL ของเสียงที่รอบันทึก
+let pendingAudioFile=null;     // File object ของเสียงที่รออัปโหลด
+
+// audio playback state: artworkId -> { audio: HTMLAudioElement, dataUrl: string }
+const artworkAudioMap = {};
+// floating 🔊 button: artworkId -> DOM element
+const audioHudBtns = {};
+let currentPlayingId = null;
+
+// painting mesh registry: id -> mesh
+const paintingMeshMap={};
+
+function showInfo(obj){
+  const d=obj.userData;
+  document.getElementById('info-title').textContent=d.title||'';
+  document.getElementById('info-desc').textContent=d.desc||'';
+  document.getElementById('info-meta').textContent=`${d.artist||''} · ${d.year||''} · ${d.type==='painting'?'จิตรกรรม':'ประติมากรรม'}`;
+  document.getElementById('info-panel').classList.add('visible');
+  infoVisible=true;
+}
+window.closeInfo=function(){
+  document.getElementById('info-panel').classList.remove('visible');
+  infoVisible=false;
+};
+
+//แก้4
+// ─── TEACHER LOGIN SYSTEM ────────────────────────────
+let TEACHER_PASSWORD = 'teacher2025';
+let isTeacher = false;
+
+async function loadTeacherPassword() {
+  try {
+    const res = await fetch(GAS_WRITE_URL, {
+      method: 'POST',
+      body: JSON.stringify({ key: GAS_SECRET, action: 'getPassword' })
+    });
+    const data = await res.json();
+    if (data.password) TEACHER_PASSWORD = data.password;
+  } catch(e) { console.warn('Could not load password:', e); }
+}
+
+window.teacherLogin = function() {
+  if (isTeacher) {
+    if (!confirm('ออกจากโหมดครูใช่ไหม?')) return;
+    isTeacher = false;
+    setTeacherMode(false);
+    showToast('🔒 ออกจากโหมดครูแล้ว');
+    return;
+  }
+  const pw = prompt('รหัสผ่านครู:');
+  if (pw === null) return;
+  if (pw === TEACHER_PASSWORD) {
+    isTeacher = true;
+    setTeacherMode(true);
+    showToast('🔓 เข้าสู่โหมดครูแล้ว');
+  } else {
+    showToast('⚠️ รหัสผ่านไม่ถูกต้อง');
+  }
+};
+
+function setTeacherMode(on) {
+  document.getElementById('edit-btn').style.display  = on ? 'inline-block' : 'none';
+  document.getElementById('clear-btn').style.display = on ? 'inline-block' : 'none';
+  document.getElementById('pw-btn').style.display    = on ? 'inline-block' : 'none';
+  document.getElementById('lock-btn').textContent    = on ? '🔓 ครู' : '🔑 ครู';
+  const b1 = document.getElementById('qm-edit-btn');
+  const b2 = document.getElementById('qm-edit-btn2');
+  if (b1) b1.style.display = on ? 'inline-block' : 'none';
+  if (b2) b2.style.display = on ? 'inline-block' : 'none';
+  if (!on && editMode) toggleEditMode();
+}
+
+window.openChangePwModal = function() {
+  document.getElementById('pw-old').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  const m = document.getElementById('pw-modal');
+  m.style.opacity = '1';
+  m.style.pointerEvents = 'all';
+  m.style.transform = 'translate(-50%,-50%) scale(1)';
+};
+
+window.closeChangePwModal = function() {
+  const m = document.getElementById('pw-modal');
+  m.style.opacity = '0';
+  m.style.pointerEvents = 'none';
+  m.style.transform = 'translate(-50%,-50%) scale(0.92)';
+};
+
+window.confirmChangePw = async function() {
+  const oldPw  = document.getElementById('pw-old').value.trim();
+  const newPw  = document.getElementById('pw-new').value.trim();
+  const confPw = document.getElementById('pw-confirm').value.trim();
+  if (!oldPw || !newPw || !confPw) { showToast('⚠️ กรอกให้ครบทุกช่อง'); return; }
+  if (newPw !== confPw) { showToast('⚠️ รหัสใหม่ไม่ตรงกัน'); return; }
+  if (newPw.length < 4) { showToast('⚠️ รหัสต้องมีอย่างน้อย 4 ตัว'); return; }
+  showToast('⏳ กำลังบันทึก...');
+  const result = await gasPost({ action: 'changePassword', oldPw, newPw });
+  if (result.ok) {
+    TEACHER_PASSWORD = newPw;
+    closeChangePwModal();
+    showToast('✅ เปลี่ยนรหัสผ่านสำเร็จ');
+  } else {
+    showToast('⚠️ ' + (result.error || 'ไม่สำเร็จ'));
+  }
+};
+//
+
+
+
+window.toggleEditMode=function(){
+  editMode=!editMode;
+  const btn=document.getElementById('edit-btn');
+  const hint=document.getElementById('edit-hint');
+  btn.classList.toggle('active',editMode);
+  btn.textContent=editMode?'✕ ออกจากโหมดแก้ไข':'✏️ แก้ไขภาพ';
+  hint.classList.toggle('show',editMode);
+  document.getElementById('info-panel').classList.remove('visible');
+  infoVisible=false;
+};
+
+// highlight on hover in edit mode
+let hoveredMesh=null;
+function onHover(){
+  if(!editMode) return;
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(interactables.filter(m=>m.userData.type==='painting'));
+  if(hits.length>0){
+    const m=hits[0].object;
+    if(m!==hoveredMesh){
+      if(hoveredMesh) hoveredMesh.material.emissive&&(hoveredMesh.material.emissive.set(0x000000));
+      hoveredMesh=m;
+      if(m.material.emissive) m.material.emissive.set(0x443300);
+    }
+    renderer.domElement.style.cursor='pointer';
+  } else {
+    if(hoveredMesh&&hoveredMesh.material.emissive) hoveredMesh.material.emissive.set(0x000000);
+    hoveredMesh=null;
+    renderer.domElement.style.cursor='default';
+  }
+}
+
+// single click = info / quiz / edit
+let lastClickTime=0;
+renderer.domElement.addEventListener('click',(e)=>{
+  const now=Date.now();
+  const isDouble=(now-lastClickTime)<350;
+  lastClickTime=now;
+
+  if (_patchSelectOnClick()) return;
+
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(interactables);
+  if(hits.length===0||!hits[0].object.userData.id) {
+    deselectModel(); return;
+  }
+  const obj=hits[0].object;
+
+  if(quizMode && obj.userData.type !== 'userModel'){
+    const id = obj.userData.id;
+    if(quizBank[id]) { openQuizForArtwork(id); return; }
+  }
+  if(editMode && obj.userData.type==='painting'){
+    if(isDouble){ openUploadModal(obj); }
+  } else if(!editMode && !quizMode){
+    showInfo(obj);
+  }
+});
+
+// ─── UPLOAD MODAL ──────────────────────────────────────────────────────────
+function openUploadModal(mesh){
+  pendingMesh=mesh;
+  pendingImageDataUrl=null;
+  pendingAudioDataUrl=null;
+  document.getElementById('modal-slot-name').textContent='กรอบที่เลือก: '+mesh.userData.title;
+  document.getElementById('upload-title-input').value=mesh.userData.title||'';
+  document.getElementById('upload-desc-input').value=mesh.userData.desc||'';
+  document.getElementById('upload-preview').style.display='none';
+  document.getElementById('upload-drop').style.display='block';
+  document.getElementById('file-input').value='';
+  document.getElementById('audio-file-input').value='';
+  // แสดงชื่อเสียงที่มีอยู่แล้ว (ถ้ามี)
+  const existingAudio = artworkAudioMap[mesh.userData.id];
+  const nameDisplay = document.getElementById('audio-name-display');
+  const removeBtn = document.getElementById('audio-remove-btn');
+  if(existingAudio){
+    nameDisplay.textContent = '🎵 ' + (mesh.userData._audioName || 'มีเสียงอยู่แล้ว');
+    removeBtn.style.display = 'inline-block';
+  } else {
+    nameDisplay.textContent = '';
+    removeBtn.style.display = 'none';
+  }
+  document.getElementById('upload-modal').classList.add('show');
+}
+
+window.closeUploadModal=function(){
+  document.getElementById('upload-modal').classList.remove('show');
+  pendingMesh=null; pendingImageDataUrl=null; pendingImageFile=null; pendingAudioDataUrl=null; pendingAudioFile=null;
+};
+
+function loadImageToMesh(mesh, url){
+    // ถ้าเป็น script.google.com ให้ fetch เป็น base64 แล้วแปลงเป็นรูป
+  if(url.includes('script.google.com')) {
+    fetch(url)
+      .then(r => r.text())
+      .then(base64 => {
+        const dataUrl = 'data:image/jpeg;base64,' + base64;
+        const img = new Image();
+        img.onload = function(){
+          const [c,cx] = makeCanvas(img.naturalWidth||512, img.naturalHeight||512);
+          cx.drawImage(img,0,0,c.width,c.height);
+          const tex = texFromCanvas(c);
+          mesh.material.map = tex;
+          mesh.material.needsUpdate = true;
+        };
+        img.src = dataUrl;
+      });
+    return;
+  }
+  const img=new Image();
+  img.crossOrigin = 'anonymous';  // ← เพิ่มบรรทัดนี้
+  img.onload=function(){
+    const [c,cx]=makeCanvas(img.naturalWidth||512, img.naturalHeight||512);
+    cx.drawImage(img,0,0,c.width,c.height);
+    const tex=texFromCanvas(c);
+    mesh.material.map=tex;
+    mesh.material.needsUpdate=true;
+  };
+  img.src=url;
+}
+
+
+function processFile(file){
+  console.log('processFile called', file); // เพิ่มบรรทัดนี้
+  if(!file||!file.type.startsWith('image/')) return;
+  pendingImageFile = file;  // เก็บ File object ไว้อัปโหลด Drive
+  console.log('pendingImageFile set', pendingImageFile); // เพิ่มบรรทัดนี้
+  const reader=new FileReader();
+  reader.onload=e=>{
+    pendingImageDataUrl=e.target.result;
+    const preview=document.getElementById('upload-preview');
+    preview.src=pendingImageDataUrl;
+    preview.style.display='block';
+    document.getElementById('upload-drop').style.display='none';
+  };
+  reader.readAsDataURL(file);
+}
+window.handleFileSelect=e=>processFile(e.target.files[0]);
+window.handleDrop=e=>{
+  e.preventDefault();
+  document.getElementById('upload-drop').classList.remove('drag-over');
+  processFile(e.dataTransfer.files[0]);
+};
+
+// ─── AUDIO UPLOAD HANDLERS ─────────────────────────────────────────────────
+function processAudioFile(file){
+  if(!file||!file.type.startsWith('audio/')) return;
+  if(file.size > 20*1024*1024){ showToast('⚠️ ไฟล์เสียงใหญ่เกิน 20MB'); return; }
+  pendingAudioFile = file;  // เก็บ File object ไว้อัปโหลด Drive
+  const reader = new FileReader();
+  reader.onload = e => {
+    pendingAudioDataUrl = e.target.result;
+    if(pendingMesh) pendingMesh.userData._audioName = file.name;
+    const nameDisplay = document.getElementById('audio-name-display');
+    nameDisplay.textContent = '🎵 ' + file.name;
+    document.getElementById('audio-remove-btn').style.display = 'inline-block';
+    showToast('🎵 โหลดเสียง "' + file.name + '" แล้ว');
+  };
+  reader.readAsDataURL(file);
+}
+window.handleAudioFileSelect = e => processAudioFile(e.target.files[0]);
+window.handleAudioDrop = e => {
+  e.preventDefault();
+  document.getElementById('audio-drop').classList.remove('drag-over');
+  processAudioFile(e.dataTransfer.files[0]);
+};
+window.removeAudio = function(){
+  pendingAudioDataUrl = null;
+  if(pendingMesh){
+    // ลบเสียงออกจาก artwork นี้
+    const id = pendingMesh.userData.id;
+    if(artworkAudioMap[id]){
+      artworkAudioMap[id].audio.pause();
+      delete artworkAudioMap[id];
+    }
+    delete pendingMesh.userData._audioName;
+    updateAudioHudBtn(id);
+  }
+  document.getElementById('audio-name-display').textContent = '';
+  document.getElementById('audio-remove-btn').style.display = 'none';
+  document.getElementById('audio-file-input').value = '';
+  showToast('🗑️ ลบเสียงแล้ว');
+};
+
+// ─── AUDIO PLAYBACK SYSTEM ─────────────────────────────────────────────────
+function setArtworkAudio(artworkId, url, fileName){
+  if(artworkAudioMap[artworkId]){
+    artworkAudioMap[artworkId].audio.pause();
+  }
+
+  // ถ้าเป็น script.google.com ให้ fetch เป็น base64 ก่อน
+  if(url && url.includes('script.google.com')) {
+    fetch(url)
+      .then(r => r.text())
+      .then(base64 => {
+        const dataUrl = 'data:audio/mpeg;base64,' + base64;
+        const audio = new Audio(dataUrl);
+        audio.loop = false;
+        artworkAudioMap[artworkId] = { audio, url, fileName: fileName||'เสียงประกอบ' };
+        audio.addEventListener('ended', () => {
+          if(currentPlayingId === artworkId) currentPlayingId = null;
+          updateAudioHudBtn(artworkId);
+        });
+        updateAudioHudBtn(artworkId);
+      });
+    return;
+  }
+
+  // URL ปกติ หรือ base64 dataUrl
+  const audio = new Audio(url);
+  audio.loop = false;
+  artworkAudioMap[artworkId] = { audio, url, fileName: fileName||'เสียงประกอบ' };
+  audio.addEventListener('ended', () => {
+    if(currentPlayingId === artworkId) currentPlayingId = null;
+    updateAudioHudBtn(artworkId);
+  });
+  updateAudioHudBtn(artworkId);
+}
+
+function toggleArtworkAudio(artworkId){
+  const entry = artworkAudioMap[artworkId];
+  if(!entry) return;
+  if(currentPlayingId && currentPlayingId !== artworkId){
+    // หยุดเสียงอื่นก่อน
+    const prev = artworkAudioMap[currentPlayingId];
+    if(prev){ prev.audio.pause(); prev.audio.currentTime = 0; }
+    updateAudioHudBtn(currentPlayingId);
+    currentPlayingId = null;
+  }
+  if(entry.audio.paused){
+    entry.audio.play();
+    currentPlayingId = artworkId;
+  } else {
+    entry.audio.pause();
+    entry.audio.currentTime = 0;
+    currentPlayingId = null;
+  }
+  updateAudioHudBtn(artworkId);
+}
+
+// สร้าง / อัปเดต floating 🔊 button บน HUD
+function updateAudioHudBtn(artworkId){
+  const hasAudio = !!artworkAudioMap[artworkId];
+  const btn = audioHudBtns[artworkId];
+  if(!btn) return;
+  if(!hasAudio){
+    btn.style.display = 'none'; return;
+  }
+  btn.style.display = 'flex';
+  const isPlaying = artworkAudioMap[artworkId] && !artworkAudioMap[artworkId].audio.paused;
+  btn.textContent = isPlaying ? '⏸' : '🔊';
+  btn.classList.toggle('playing', isPlaying);
+}
+
+function ensureAudioHudBtn(artworkId){
+  if(audioHudBtns[artworkId]) return;
+  const container = document.getElementById('canvas-container');
+  const btn = document.createElement('div');
+  btn.className = 'audio-hud-btn';
+  btn.id = 'audio-hud-' + artworkId;
+  btn.title = 'เล่น/หยุดเสียงประกอบ';
+  btn.textContent = '🔊';
+  btn.style.display = 'none';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleArtworkAudio(artworkId);
+  });
+  container.appendChild(btn);
+  audioHudBtns[artworkId] = btn;
+  updateAudioHudBtn(artworkId);
+}
+
+// แสดง/ซ่อนปุ่มตามระยะห่าง — เรียกใน animate loop
+function tickAudioHudBtns(){
+  const SHOW_DIST = 3.5; // เมตร — เข้าใกล้แค่ไหนถึงเห็นปุ่ม
+  interactables.forEach(mesh => {
+    const id = mesh.userData.id;
+    if(!id || !artworkAudioMap[id]) return;
+    ensureAudioHudBtn(id);
+    const btn = audioHudBtns[id];
+    const dist = camera.position.distanceTo(mesh.getWorldPosition(new THREE.Vector3()));
+    const near = dist < SHOW_DIST;
+    btn.classList.toggle('visible', near);
+    if(near){
+      // project ตำแหน่งของ mesh ออกมาเป็น screen coords
+      const pos = mesh.getWorldPosition(new THREE.Vector3());
+      pos.project(camera);
+      const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-pos.y * 0.5 + 0.5) * window.innerHeight;
+      btn.style.left = (x - 19) + 'px';
+      btn.style.top  = (y - 60) + 'px'; // อยู่เหนือชิ้นงานนิดนึง
+    }
+  });
+}
+
+// ─── CONTROLS ──────────────────────────────────────────────────────────────
+const keys={};
+document.addEventListener('keydown',e=>keys[e.code]=true);
+document.addEventListener('keyup',e=>keys[e.code]=false);
+
+let yaw=0, pitch=0, isDragging=false, lastX=0, lastY=0;
+const SPEED=0.045;
+const HALF_W=RW/2-0.4, HALF_D=RD/2-0.4;
+
+renderer.domElement.addEventListener('mousedown',e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY;});
+document.addEventListener('mouseup',()=>isDragging=false);
+document.addEventListener('mousemove',e=>{
+  pointer.x=(e.clientX/window.innerWidth)*2-1;
+  pointer.y=-(e.clientY/window.innerHeight)*2+1;
+  if(!isDragging) return;
+  yaw  -=(e.clientX-lastX)*0.003;
+  pitch-=(e.clientY-lastY)*0.002;
+  pitch=Math.max(-1.1,Math.min(0.6,pitch));
+  lastX=e.clientX;lastY=e.clientY;
+});
+
+// ─── TOUCH CONTROLS (fixed: separate tap vs drag) ─────────────────────────
+let touchStart={x:0,y:0};
+let touchMoved = false;
+let touchStartTime = 0;
+
+renderer.domElement.addEventListener('touchstart', e => {
+  // only 1-finger look drag on canvas
+  if (e.touches.length === 1) {
+    touchStart.x = e.touches[0].clientX;
+    touchStart.y = e.touches[0].clientY;
+    touchMoved = false;
+    touchStartTime = Date.now();
+  }
+}, { passive: true });
+
+renderer.domElement.addEventListener('touchmove', e => {
+  if (e.touches.length === 1) {
+    const dx = e.touches[0].clientX - touchStart.x;
+    const dy = e.touches[0].clientY - touchStart.y;
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) touchMoved = true;
+    yaw   -= dx * 0.004;
+    pitch -= dy * 0.003;
+    pitch = Math.max(-1.1, Math.min(0.6, pitch));
+    touchStart.x = e.touches[0].clientX;
+    touchStart.y = e.touches[0].clientY;
+  }
+  e.preventDefault();
+}, { passive: false });
+
+renderer.domElement.addEventListener('touchend', e => {
+  // short tap without much movement = treat as click
+  if (!touchMoved && Date.now() - touchStartTime < 300) {
+    // update pointer to tap position
+    const t = e.changedTouches[0];
+    pointer.x =  (t.clientX / window.innerWidth)  * 2 - 1;
+    pointer.y = -(t.clientY / window.innerHeight) * 2 + 1;
+    handleInteraction();
+  }
+}, { passive: true });
+
+// tap button fires interaction at center of screen (crosshair position)
+window.mobileTap = function() {
+  pointer.x = 0; pointer.y = 0;
+  handleInteraction();
+};
+
+function handleInteraction() {
+  if (_patchSelectOnClick()) return;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(interactables);
+  if (hits.length === 0 || !hits[0].object.userData.id) {
+    deselectModel(); return;
+  }
+  const obj = hits[0].object;
+  if (quizMode && obj.userData.type !== 'userModel') {
+    const id = obj.userData.id;
+    if (quizBank[id]) { openQuizForArtwork(id); return; }
+  }
+  if (!editMode && !quizMode) showInfo(obj);
+}
+
+// ─── VIRTUAL JOYSTICK ─────────────────────────────────────────────────────
+const joystickZone  = document.getElementById('joystick-zone');
+const joystickStick = document.getElementById('joystick-stick');
+let joyActive = false;
+let joyVec = { x: 0, y: 0 };
+const JOY_R = 33; // max stick radius
+
+joystickZone.addEventListener('touchstart', e => {
+  e.stopPropagation();
+  joyActive = true;
+}, { passive: true });
+
+joystickZone.addEventListener('touchmove', e => {
+  e.stopPropagation(); e.preventDefault();
+  const rect = joystickZone.getBoundingClientRect();
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  let dx = e.touches[0].clientX - cx;
+  let dy = e.touches[0].clientY - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist > JOY_R) { dx = dx/dist*JOY_R; dy = dy/dist*JOY_R; }
+  joyVec.x = dx / JOY_R;
+  joyVec.y = dy / JOY_R;
+  joystickStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}, { passive: false });
+
+joystickZone.addEventListener('touchend', e => {
+  e.stopPropagation();
+  joyActive = false;
+  joyVec.x = 0; joyVec.y = 0;
+  joystickStick.style.transform = 'translate(-50%,-50%)';
+}, { passive: true });
+
+function updateCamera(){
+  const dir=new THREE.Vector3();
+  const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  if(keys['KeyW']||keys['ArrowUp'])   dir.addScaledVector(forward,SPEED);
+  if(keys['KeyS']||keys['ArrowDown']) dir.addScaledVector(forward,-SPEED);
+  if(keys['KeyA']||keys['ArrowLeft']) dir.addScaledVector(right,-SPEED);
+  if(keys['KeyD']||keys['ArrowRight'])dir.addScaledVector(right,SPEED);
+  // joystick
+  if(joyActive){
+    dir.addScaledVector(forward, -joyVec.y * SPEED * 1.4);
+    dir.addScaledVector(right,    joyVec.x * SPEED * 1.4);
+  }
+  camera.position.add(dir);
+  camera.position.x=Math.max(-HALF_W,Math.min(HALF_W,camera.position.x));
+  camera.position.z=Math.max(-HALF_D,Math.min(HALF_D,camera.position.z));
+  camera.position.y=1.65;
+  camera.rotation.order='YXZ';
+  camera.rotation.y=yaw;
+  camera.rotation.x=pitch;
+}
+
+// ─── ANIMATE ──────────────────────────────────────────────────────────────
+function animate(){
+  requestAnimationFrame(animate);
+  updateCamera();
+  onHover();
+  if(window._gizmoTick) window._gizmoTick();
+  tickAudioHudBtns();
+  // gentle sculpture rotation
+  const t=Date.now()*0.001;
+  scene.traverse(obj=>{
+    if(obj.userData.type==='sculpture' && obj.geometry){
+      obj.rotation.y=t*0.4;
+    }
+  });
+  renderer.render(scene,camera);
+}
+animate();
+
+// ═══════════════════════════════════════════════════════
+// ─── QUIZ SYSTEM ────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+// ── Quiz data: questions per artwork id ──
+const quizBank = {};
+
+
+// ── Quiz state ──
+let quizMode = false;
+let quizQueue  = [];   // [ { artworkId, qIndex } ]
+let quizCursor = 0;
+let quizScore  = 0;
+let quizAnswered = false;
+let quizTotal  = 0;
+
+window.toggleQuizMode = function() {
+  quizMode = !quizMode;
+  const btn  = document.getElementById('quiz-btn');
+  const hint = document.getElementById('quiz-hint');
+  btn.classList.toggle('active', quizMode);
+  btn.textContent = quizMode ? '✕ ออกจากโหมดทดสอบ' : '🧩 โหมดทดสอบ';
+  hint.classList.toggle('show', quizMode);
+  if (!quizMode) closeQuizModal();
+};
+
+function buildQuizQueue() {
+  const q = [];
+  for (const [id, qs] of Object.entries(quizBank)) {
+    qs.forEach((_, i) => q.push({ artworkId: id, qIndex: i }));
+  }
+  // shuffle
+  for (let i = q.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i+1));
+    [q[i], q[j]] = [q[j], q[i]];
+  }
+  return q;
+}
+
+  // build queue from this artwork first, then rest
+function openQuizForArtwork(artworkId) {
+  const qs = quizBank[artworkId];
+  if (!qs || qs.length === 0) return;
+  // แสดงแค่คำถามของรูปนี้อย่างเดียว
+  quizQueue = qs.map((_,i) => ({ artworkId, qIndex: i }));
+  quizCursor  = 0;
+  quizScore   = 0;
+  quizTotal   = 0;
+  quizAnswered = false;
+  document.getElementById('quiz-modal').classList.add('show');
+  document.getElementById('qm-body').style.display = 'block';
+  document.getElementById('qm-summary').style.display = 'none';
+  renderQuizQuestion();
+}
+
+function renderQuizQuestion() {
+  if (quizCursor >= quizQueue.length) { showQuizSummary(); return; }
+  const { artworkId, qIndex } = quizQueue[quizCursor];
+  const qData = quizBank[artworkId][qIndex];
+  quizAnswered = false;
+
+  // find artwork name
+  const artObj = artworks.find(a => a.id === artworkId) ||
+    sculptures.find(s => s.id === artworkId);
+  document.getElementById('qm-artwork-name').textContent = artObj ? artObj.title : artworkId;
+  document.getElementById('qm-question').textContent = qData.q;
+
+  // choices
+  const choicesEl = document.getElementById('qm-choices');
+  choicesEl.innerHTML = qData.choices.map((c, i) =>
+    `<button class="qm-choice" onclick="quizAnswer(${i})">
+      <span class="choice-letter">${['A','B','C','D'][i]}</span>
+      <span>${c}</span>
+    </button>`
+  ).join('');
+
+  // hide feedback
+  const fb = document.getElementById('qm-feedback');
+  fb.classList.remove('show');
+
+  // buttons
+  document.getElementById('qm-skip').style.display = 'inline-block';
+  document.getElementById('qm-next').style.display = 'none';
+
+  updateQuizScore();
+}
+
+window.quizAnswer = function(chosen) {
+  if (quizAnswered) return;
+  quizAnswered = true;
+  quizTotal++;
+
+  const { artworkId, qIndex } = quizQueue[quizCursor];
+  const qData = quizBank[artworkId][qIndex];
+  const correct = qData.answer;
+
+  // mark choices
+  const btns = document.querySelectorAll('.qm-choice');
+  btns.forEach((b, i) => {
+    b.classList.add('answered');
+    if (i === correct) b.classList.add('correct');
+    if (i === chosen && chosen !== correct) b.classList.add('wrong');
+  });
+
+  // feedback
+  const isRight = chosen === correct;
+  if (isRight) quizScore++;
+
+  const fbInner = document.getElementById('qm-fb-inner');
+  fbInner.className = 'qm-fb-inner ' + (isRight ? 'correct' : 'wrong');
+  fbInner.innerHTML = `
+    <div class="qm-fb-title">${isRight ? '✓ ถูกต้อง!' : `✗ ไม่ถูกต้อง — คำตอบที่ถูกคือ "${qData.choices[correct]}"`}</div>
+    <div>${qData.explain}</div>`;
+
+  const fb = document.getElementById('qm-feedback');
+  fb.classList.add('show');
+
+  document.getElementById('qm-skip').style.display = 'none';
+  document.getElementById('qm-next').style.display = 'inline-block';
+
+  updateQuizScore();
+};
+
+window.quizNext = function() {
+  quizCursor++;
+  if (quizCursor >= quizQueue.length) { showQuizSummary(); return; }
+  renderQuizQuestion();
+};
+
+window.quizSkip = function() {
+  quizCursor++;
+  if (quizCursor >= quizQueue.length) { showQuizSummary(); return; }
+  renderQuizQuestion();
+};
+
+function updateQuizScore() {
+  document.getElementById('qm-score').textContent =
+    `คะแนน: ${quizScore} / ${quizTotal}  (ข้อที่ ${quizCursor+1}/${quizQueue.length})`;
+}
+
+function showQuizSummary() {
+  const pct = quizTotal > 0 ? Math.round(quizScore/quizTotal*100) : 0;
+  document.getElementById('qm-body').style.display = 'none';
+  document.getElementById('qm-summary').style.display = 'block';
+  document.getElementById('qm-big-score').textContent = pct + '%';
+  document.getElementById('qm-score-label').textContent =
+    `${quizScore} คะแนน จาก ${quizTotal} ข้อ`;
+  const msgs = [
+    [90,'🏆 ยอดเยี่ยม! คุณคือผู้เชี่ยวชาญด้านศิลปะตัวจริง'],
+    [70,'🎨 ดีมาก! ความรู้ด้านศิลปะของคุณน่าประทับใจ'],
+    [50,'📖 ไม่เลย! ลองเดินชมผลงานแล้วมาทำใหม่นะ'],
+    [0, '🖼 ยังมีเรื่องราวน่าสนใจรออยู่ — เดินชมพิพิธภัณฑ์อีกครั้ง!'],
+  ];
+  document.getElementById('qm-score-msg').textContent =
+    (msgs.find(([t]) => pct >= t) || msgs[msgs.length-1])[1];
+}
+
+window.quizRestart = function() {
+  quizQueue   = buildQuizQueue();
+  quizCursor  = 0;
+  quizScore   = 0;
+  quizTotal   = 0;
+  quizAnswered = false;
+  document.getElementById('qm-body').style.display = 'block';
+  document.getElementById('qm-summary').style.display = 'none';
+  renderQuizQuestion();
+};
+
+window.closeQuizModal = function() {
+  document.getElementById('quiz-modal').classList.remove('show');
+};
+
+// ═══════════════════════════════════════════════════════
+// ─── QUIZ EDITOR ────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+// All objects that can have quiz questions
+function qeGetAllObjects() {
+  return [
+    ...artworks.map(a => ({ id: a.id, label: a.title })),
+    ...sculptures.map(s => ({ id: s.id, label: s.title })),
+  ];
+}
+
+// Deep-clone quizBank to working draft
+let qeDraft = {}; // id -> [ {q, choices:[4], answer, explain} ]
+let qeCurrentId = null;
+
+window.openQuizEditor = function(focusId) {
+  // clone current quizBank into draft
+  qeDraft = {};
+  for (const [id, qs] of Object.entries(quizBank)) {
+    qeDraft[id] = qs.map(q => ({
+      q: q.q,
+      choices: [...q.choices],
+      answer: q.answer,
+      explain: q.explain || ''
+    }));
+  }
+
+  // build object dropdown
+  const sel = document.getElementById('qe-obj-select');
+  sel.innerHTML = qeGetAllObjects().map(o =>
+    `<option value="${o.id}">${o.label}</option>`
+  ).join('');
+
+  // focus on current artwork if given
+  if (focusId && qeGetAllObjects().find(o => o.id === focusId)) {
+    sel.value = focusId;
+  }
+
+  qeCurrentId = sel.value;
+  qeRenderList();
+
+  // hide quiz modal, show editor
+  document.getElementById('quiz-modal').classList.remove('show');
+  document.getElementById('qe-modal').classList.add('show');
+};
+
+window.closeQuizEditor = function() {
+  document.getElementById('qe-modal').classList.remove('show');
+};
+
+window.qeLoadObject = function() {
+  qeCurrentId = document.getElementById('qe-obj-select').value;
+  qeRenderList();
+};
+
+function qeGetDraft() {
+  if (!qeDraft[qeCurrentId]) qeDraft[qeCurrentId] = [];
+  return qeDraft[qeCurrentId];
+}
+
+function qeRenderList() {
+  const list = document.getElementById('qe-list');
+  const qs = qeGetDraft();
+  if (qs.length === 0) {
+    list.innerHTML = `<div class="qe-empty">ยังไม่มีคำถาม — กด "＋ เพิ่มคำถาม" เพื่อเริ่ม</div>`;
+    return;
+  }
+  list.innerHTML = qs.map((q, qi) => `
+    <div class="qe-card" id="qe-card-${qi}">
+      <div class="qe-card-head">
+        <span class="qe-card-num">คำถามที่ ${qi + 1}</span>
+        <span class="qe-del-btn" onclick="qeDeleteQ(${qi})" title="ลบคำถามนี้">🗑</span>
+      </div>
+
+      <div class="qe-field">
+        <label>คำถาม</label>
+        <textarea class="qe-input qe-textarea" id="qe-q-${qi}" rows="2"
+          oninput="qeDraft[qeCurrentId][${qi}].q=this.value"
+        >${escHtml(q.q)}</textarea>
+      </div>
+
+      <div class="qe-field">
+        <label>ตัวเลือก (เลือก ◉ = คำตอบที่ถูก)</label>
+        <div class="qe-choices-grid">
+          ${['A','B','C','D'].map((letter, ci) => `
+            <div class="qe-choice-row">
+              <span class="qe-choice-letter">${letter}</span>
+              <input type="radio" class="qe-radio" name="qe-ans-${qi}"
+                ${q.answer === ci ? 'checked' : ''}
+                onchange="qeDraft[qeCurrentId][${qi}].answer=${ci}"
+              />
+              <span class="qe-radio-label">ถูก</span>
+              <input class="qe-input" style="flex:1"
+                value="${escHtml(q.choices[ci] || '')}"
+                oninput="qeDraft[qeCurrentId][${qi}].choices[${ci}]=this.value"
+                placeholder="ตัวเลือก ${letter}..."
+              />
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="qe-field">
+        <label>คำอธิบายเฉลย</label>
+        <textarea class="qe-input qe-textarea" rows="2"
+          oninput="qeDraft[qeCurrentId][${qi}].explain=this.value"
+          placeholder="อธิบายว่าทำไมถึงถูก..."
+        >${escHtml(q.explain || '')}</textarea>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+window.qeAddQuestion = function() {
+  const qs = qeGetDraft();
+  qs.push({
+    q: '',
+    choices: ['', '', '', ''],
+    answer: 0,
+    explain: ''
+  });
+  qeRenderList();
+  // scroll to bottom
+  setTimeout(() => {
+    const list = document.getElementById('qe-list');
+    list.scrollTop = list.scrollHeight;
+  }, 50);
+};
+
+window.qeDeleteQ = function(qi) {
+  const qs = qeGetDraft();
+  if (!confirm(`ลบคำถามที่ ${qi+1} ใช่ไหม?`)) return;
+  qs.splice(qi, 1);
+  qeRenderList();
+};
+
+window.qeSave = function() {
+  for (const [id, qs] of Object.entries(qeDraft)) {
+    quizBank[id] = qs.filter(q => q.q.trim() && q.choices.some(c => c.trim()));
+  }
+  const t = document.getElementById('qe-saved-toast');
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2000);
+  saveAll();  // ← เพิ่มบรรทัดนี้
+};
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── 3D MODEL UPLOAD SYSTEM ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+const placedModels = [];   // { group, name, id }
+let pendingModelObject = null;  // parsed THREE.Group, ready to place
+let modelIdCounter = 0;
+
+// ── UI helpers ──
+window.openModelModal = function() {
+  resetModelModal();
+  document.getElementById('model-modal').classList.add('show');
+};
+window.closeModelModal = function() {
+  document.getElementById('model-modal').classList.remove('show');
+  pendingModelObject = null;
+};
+
+function resetModelModal() {
+  pendingModelObject = null;
+  document.getElementById('model-drop').style.display = 'block';
+  document.getElementById('model-spinner').classList.remove('show');
+  setModelStatus('', false);
+  document.getElementById('model-name-input').value = '';
+  document.getElementById('model-scale').value = 100;
+  document.getElementById('scale-val').textContent = '100%';
+  document.getElementById('model-file-input').value = '';
+  document.getElementById('model-confirm').disabled = true;
+  document.getElementById('model-confirm').style.opacity = '0.4';
+}
+
+function setModelStatus(msg, isError) {
+  const el = document.getElementById('model-status');
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' error' : '');
+  if (!msg) el.className = '';
+}
+
+function enableConfirm() {
+  document.getElementById('model-confirm').disabled = false;
+  document.getElementById('model-confirm').style.opacity = '1';
+}
+
+// ── File ingestion ──
+window.handleModelDrop = function(e) {
+  e.preventDefault();
+  document.getElementById('model-drop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processModelFile(file);
+};
+window.handleModelFile = function(e) {
+  const file = e.target.files[0];
+  if (file) processModelFile(file);
+};
+
+function processModelFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['obj','gltf','glb'].includes(ext)) {
+    setModelStatus('❌ รองรับเฉพาะ .obj .gltf .glb', true); return;
+  }
+  document.getElementById('model-drop').style.display = 'none';
+  document.getElementById('model-spinner').classList.add('show');
+  setModelStatus('⏳ กำลังโหลด...', false);
+  if (!document.getElementById('model-name-input').value)
+    document.getElementById('model-name-input').value = file.name.replace(/\.[^.]+$/, '');
+
+  if (ext === 'obj') { loadOBJ(file); }
+  else { loadGLTF(file); }
+}
+
+// ── Tab switcher ──
+window.switchModelTab = function(tab) {
+  document.getElementById('model-tab-file').style.display = tab==='file' ? 'block' : 'none';
+  document.getElementById('model-tab-url').style.display  = tab==='url'  ? 'block' : 'none';
+  document.getElementById('tab-file').classList.toggle('active', tab==='file');
+  document.getElementById('tab-url').classList.toggle('active',  tab==='url');
+  setModelStatus('', false);
+};
+
+// ── Load from URL ──
+window.loadModelFromURL = function() {
+  const url = document.getElementById('model-url-input').value.trim();
+  if (!url) { setModelStatus('❌ กรุณาใส่ URL', true); return; }
+
+  // detect extension from URL (ignore query string)
+  const clean = url.split('?')[0].split('#')[0];
+  const ext = clean.split('.').pop().toLowerCase();
+  if (!['obj','gltf','glb'].includes(ext)) {
+    setModelStatus('❌ URL ต้องลงท้ายด้วย .obj .gltf .glb', true); return;
+  }
+
+  // auto-fill name from URL
+  if (!document.getElementById('model-name-input').value) {
+    const basename = clean.split('/').pop().replace(/\.[^.]+$/, '');
+    document.getElementById('model-name-input').value = basename;
+  }
+
+  document.getElementById('model-spinner').classList.add('show');
+  setModelStatus('⏳ กำลังโหลดจาก URL...', false);
+
+  fetch(url)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.arrayBuffer();
+    })
+    .then(buf => {
+      pendingModelURL = url; // ← จำ URL ต้นทาง
+      if (ext === 'obj') {
+        const text = new TextDecoder().decode(buf);
+        const group = parseOBJText(text);
+        onModelLoaded(group, clean.split('/').pop());
+      } else {
+        const group = parseGLTFBuffer(buf, clean.split('/').pop());
+        onModelLoaded(group, clean.split('/').pop());
+      }
+    })
+    .catch(err => {
+      console.error('URL load error:', err);
+      // CORS error → suggest workaround
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setModelStatus('❌ CORS blocked — ดูวิธีแก้ด้านล่าง', true);
+        showCORSHelp();
+      } else {
+        setModelStatus('❌ โหลดไม่สำเร็จ: ' + err.message, true);
+      }
+      document.getElementById('model-spinner').classList.remove('show');
+    });
+};
+
+function showCORSHelp() {
+  const el = document.getElementById('model-status');
+  el.innerHTML = `
+    ❌ <b>CORS blocked</b> — server ไม่อนุญาตให้โหลดข้ามเว็บ<br>
+    <span style="font-size:10px;opacity:0.7;line-height:1.8">
+    ✓ ถ้าใช้ Netlify: อัปโหลดไฟล์ไว้ใน <b>โฟลเดอร์เดียวกัน</b> กับ index.html<br>
+    ✓ URL ต้องเป็น <b>https://yoursite.netlify.app/models/file.glb</b><br>
+    ✓ ไม่ใช่ Google Drive / Dropbox / OneDrive (CORS blocked)
+    </span>`;
+  el.className = 'show error';
+  el.style.minHeight = 'auto';
+}
+
+// ── OBJ loader — reads File directly, no XHR ──
+function loadOBJ(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const group = parseOBJText(e.target.result);
+      onModelLoaded(group, file.name);
+    } catch(err) {
+      console.error('OBJ parse error:', err);
+      onModelError(err);
+    }
+  };
+  reader.onerror = onModelError;
+  reader.readAsText(file);
+}
+
+function parseOBJText(text) {
+  const verts=[], normals=[], uvs=[];
+  const group = new THREE.Group();
+  // collect all faces into one mesh for simplicity
+  const positions=[], norms=[], uvsOut=[];
+  const defaultMat = new THREE.MeshStandardMaterial({color:0xcccccc,roughness:0.6,metalness:0.1,side:THREE.DoubleSide});
+
+  const lines = text.split(/\r?\n/);
+  for(const raw of lines){
+    const line = raw.trim();
+    if(!line || line[0]==='#') continue;
+    const p = line.split(/\s+/);
+    if(p[0]==='v'){
+      verts.push(parseFloat(p[1])||0, parseFloat(p[2])||0, parseFloat(p[3])||0);
+    } else if(p[0]==='vn'){
+      normals.push(parseFloat(p[1])||0, parseFloat(p[2])||0, parseFloat(p[3])||0);
+    } else if(p[0]==='vt'){
+      uvs.push(parseFloat(p[1])||0, parseFloat(p[2])||0);
+    } else if(p[0]==='f'){
+      // triangulate fan: v0, v1, v2 ... vN
+      const fv=[];
+      for(let i=1;i<p.length;i++){
+        const idxs=p[i].split('/');
+        const vi=(parseInt(idxs[0])||1)-1;
+        const ti=idxs[1]&&idxs[1]!==''?(parseInt(idxs[1])||1)-1:-1;
+        const ni=idxs[2]&&idxs[2]!==''?(parseInt(idxs[2])||1)-1:-1;
+        fv.push({vi,ti,ni});
+      }
+      for(let i=1;i<fv.length-1;i++){
+        for(const f of [fv[0],fv[i],fv[i+1]]){
+          positions.push(verts[f.vi*3]||0, verts[f.vi*3+1]||0, verts[f.vi*3+2]||0);
+          if(f.ni>=0 && normals.length) norms.push(normals[f.ni*3]||0, normals[f.ni*3+1]||0, normals[f.ni*3+2]||0);
+          if(f.ti>=0 && uvs.length) uvsOut.push(uvs[f.ti*2]||0, uvs[f.ti*2+1]||0);
+        }
+      }
+    }
+  }
+
+  if(positions.length===0) throw new Error('No geometry found in OBJ');
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  if(norms.length===positions.length) geo.setAttribute('normal', new THREE.Float32BufferAttribute(norms,3));
+  if(uvsOut.length) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvsOut,2));
+  geo.computeVertexNormals();
+  group.add(new THREE.Mesh(geo, defaultMat));
+  return group;
+}
+
+// ── GLB/GLTF loader — reads File as ArrayBuffer ──
+function loadGLTF(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const group = parseGLTFBuffer(e.target.result, file.name);
+      onModelLoaded(group, file.name);
+    } catch(err) {
+      console.error('GLTF parse error:', err);
+      onModelError(err);
+    }
+  };
+  reader.onerror = onModelError;
+  reader.readAsArrayBuffer(file);
+}
+
+function parseGLTFBuffer(buffer, filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  let json, binChunk = null;
+
+  if(ext==='glb'){
+    const dv = new DataView(buffer);
+    // header: magic(4) version(4) length(4)
+    const magic = dv.getUint32(0,true);
+    if(magic !== 0x46546C67) throw new Error('Not a valid GLB file (bad magic)');
+    // chunk 0: JSON
+    const chunk0Len = dv.getUint32(12,true);
+    const chunk0Type = dv.getUint32(16,true);
+    if(chunk0Type !== 0x4E4F534A) throw new Error('GLB first chunk not JSON');
+    const jsonBytes = new Uint8Array(buffer, 20, chunk0Len);
+    json = JSON.parse(new TextDecoder().decode(jsonBytes));
+    // chunk 1: BIN (optional)
+    const chunk1Start = 20 + chunk0Len;
+    if(chunk1Start + 8 <= buffer.byteLength){
+      const chunk1Len = dv.getUint32(chunk1Start, true);
+      const chunk1Type = dv.getUint32(chunk1Start+4, true);
+      if(chunk1Type === 0x004E4942){ // BIN
+        binChunk = buffer.slice(chunk1Start+8, chunk1Start+8+chunk1Len);
+      }
+    }
+  } else {
+    json = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer)));
+  }
+
+  return buildFromGLTF(json, binChunk);
+}
+
+function buildFromGLTF(json, binChunk) {
+  const group = new THREE.Group();
+
+  // ── resolve raw buffer by index ──
+  function getBuffer(bufIdx) {
+    const buf = (json.buffers||[])[bufIdx];
+    if (!buf) return null;
+    if (binChunk && !buf.uri) return binChunk;
+    if (buf.uri && buf.uri.startsWith('data:')) {
+      const b64 = buf.uri.split(',')[1];
+      const raw = atob(b64);
+      const arr = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+      return arr.buffer;
+    }
+    return null;
+  }
+
+  // ── get image bytes for a bufferView as standalone ArrayBuffer ──
+  function getBufferViewBytes(bvIdx) {
+    const bv = (json.bufferViews||[])[bvIdx];
+    if (!bv) return null;
+    const rawBuf = getBuffer(bv.buffer);
+    if (!rawBuf) return null;
+    const start = bv.byteOffset || 0;
+    return rawBuf.slice(start, start + bv.byteLength); // slice → new ArrayBuffer, correct range
+  }
+
+  // ── typed array from accessor ──
+  function getAccessor(idx) {
+    if (idx === undefined || idx === null) return null;
+    const acc = (json.accessors||[])[idx];
+    if (!acc) return null;
+    const bv = json.bufferViews[acc.bufferView];
+    const rawBuf = getBuffer(bv.buffer);
+    if (!rawBuf) return null;
+    const byteOffset = (bv.byteOffset||0) + (acc.byteOffset||0);
+    const compCount = {SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT2:4,MAT3:9,MAT4:16}[acc.type]||1;
+    const total = acc.count * compCount;
+    const CT = acc.componentType;
+    if (CT===5126) return new Float32Array(rawBuf, byteOffset, total);
+    if (CT===5123) return new Uint16Array(rawBuf, byteOffset, total);
+    if (CT===5125) return new Uint32Array(rawBuf, byteOffset, total);
+    if (CT===5121) return new Uint8Array(rawBuf, byteOffset, total);
+    if (CT===5120) return new Int8Array(rawBuf, byteOffset, total);
+    return new Float32Array(rawBuf, byteOffset, total);
+  }
+
+  // ── get raw bytes slice for a bufferView (returns standalone ArrayBuffer) ──
+  function getBufferViewBytes(bvIdx) {
+    const bv = (json.bufferViews||[])[bvIdx];
+    if (!bv) return null;
+    const rawBuf = getBuffer(bv.buffer);
+    if (!rawBuf) return null;
+    // slice out exactly the right bytes — avoids offset/length mismatch
+    const start = bv.byteOffset || 0;
+    const end   = start + bv.byteLength;
+    return rawBuf.slice(start, end); // returns a new ArrayBuffer
+  }
+
+  // ── async: build THREE.Texture from a standalone ArrayBuffer of image bytes ──
+  function texFromImageBuffer(arrayBuf, mimeType, isColor) {
+    return new Promise(resolve => {
+      try {
+        const blob = new Blob([arrayBuf], { type: mimeType || 'image/png' });
+        createImageBitmap(blob).then(bmp => {
+          const tex = new THREE.Texture(bmp);
+          tex.flipY   = false;
+          tex.encoding = isColor ? THREE.sRGBEncoding : THREE.LinearEncoding;
+          tex.needsUpdate = true;
+          resolve(tex);
+        }).catch(() => resolve(null));
+      } catch(e) { resolve(null); }
+    });
+  }
+
+  // ── async: build all textures upfront then build materials ──
+  async function buildMaterialsAsync() {
+    // resolve image index → ArrayBuffer
+    const imgBuffers = await Promise.all(
+      (json.images||[]).map(async (imgDef, i) => {
+        if (imgDef.bufferView !== undefined) {
+          const ab = getBufferViewBytes(imgDef.bufferView);
+          if (ab) return { ab, mime: imgDef.mimeType || 'image/png' };
+        } else if (imgDef.uri && imgDef.uri.startsWith('data:')) {
+          // decode base64 data URI
+          const [header, b64] = imgDef.uri.split(',');
+          const mime = header.match(/:(.*?);/)?.[1] || 'image/png';
+          const raw  = atob(b64);
+          const arr  = new Uint8Array(raw.length);
+          for (let k=0; k<raw.length; k++) arr[k] = raw.charCodeAt(k);
+          return { ab: arr.buffer, mime };
+        }
+        return null;
+      })
+    );
+
+    // build textures: need color vs linear per usage
+    // scan materials to decide which images are color vs linear
+    const isColorImg = new Set();
+    const isLinearImg = new Set();
+    (json.materials||[]).forEach(m => {
+      const pbr = m.pbrMetallicRoughness || {};
+      const getImgIdx = (texInfo) => {
+        if (!texInfo) return -1;
+        const td = (json.textures||[])[texInfo.index];
+        return td ? td.source : -1;
+      };
+      const ci = getImgIdx(pbr.baseColorTexture);       if (ci>=0) isColorImg.add(ci);
+      const ei = getImgIdx(m.emissiveTexture);           if (ei>=0) isColorImg.add(ei);
+      const mri= getImgIdx(pbr.metallicRoughnessTexture);if (mri>=0) isLinearImg.add(mri);
+      const ni = getImgIdx(m.normalTexture);             if (ni>=0) isLinearImg.add(ni);
+      const oi = getImgIdx(m.occlusionTexture);          if (oi>=0) isLinearImg.add(oi);
+    });
+
+    // build one texture per (imgIdx, colorMode) pair
+    const texByImg = {};
+    await Promise.all(
+      imgBuffers.map(async (entry, i) => {
+        if (!entry) return;
+        const asColor  = isColorImg.has(i);
+        const asLinear = isLinearImg.has(i);
+        if (asColor)  texByImg[i+'_c'] = await texFromImageBuffer(entry.ab, entry.mime, true);
+        if (asLinear) texByImg[i+'_l'] = await texFromImageBuffer(entry.ab, entry.mime, false);
+        // fallback if used in unexpected slot
+        if (!asColor && !asLinear) texByImg[i+'_c'] = await texFromImageBuffer(entry.ab, entry.mime, true);
+      })
+    );
+
+    function getTex(texInfo, isColor) {
+      if (!texInfo) return null;
+      const td = (json.textures||[])[texInfo.index];
+      if (!td || td.source === undefined) return null;
+      const k = td.source + (isColor ? '_c' : '_l');
+      return texByImg[k] || texByImg[td.source+'_c'] || null;
+    }
+
+    return (json.materials||[]).map(m => {
+      const mat = new THREE.MeshStandardMaterial({
+        side: THREE.DoubleSide, roughness: 0.5, metalness: 0.0, color: 0xffffff
+      });
+      const pbr = m.pbrMetallicRoughness || {};
+
+      const colorTex = getTex(pbr.baseColorTexture, true);
+      if (colorTex) mat.map = colorTex;
+
+      if (pbr.baseColorFactor) {
+        mat.color.setRGB(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]);
+        if (pbr.baseColorFactor[3] !== undefined && pbr.baseColorFactor[3] < 1) {
+          mat.opacity = pbr.baseColorFactor[3]; mat.transparent = true;
+        }
+      }
+
+      mat.metalness = pbr.metallicFactor  !== undefined ? pbr.metallicFactor  : 0.0;
+      mat.roughness = pbr.roughnessFactor !== undefined ? pbr.roughnessFactor : 0.5;
+
+      const mrTex = getTex(pbr.metallicRoughnessTexture, false);
+      if (mrTex) { mat.metalnessMap = mrTex; mat.roughnessMap = mrTex; }
+
+      const normTex = getTex(m.normalTexture, false);
+      if (normTex) mat.normalMap = normTex;
+
+      if (m.emissiveFactor) mat.emissive.setRGB(m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2]);
+      const emTex = getTex(m.emissiveTexture, true);
+      if (emTex) mat.emissiveMap = emTex;
+
+      const occTex = getTex(m.occlusionTexture, false);
+      if (occTex) mat.aoMap = occTex;
+
+      if (m.doubleSided) mat.side = THREE.DoubleSide;
+      if (m.alphaMode === 'BLEND') { mat.transparent = true; mat.depthWrite = false; }
+      if (m.alphaMode === 'MASK')  { mat.alphaTest = m.alphaCutoff !== undefined ? m.alphaCutoff : 0.5; }
+
+      return mat;
+    });
+  }
+
+  // dummy sync mats placeholder — replaced after async build
+  const defaultMat = new THREE.MeshStandardMaterial({
+    color: 0xcccccc, roughness: 0.5, metalness: 0.0, side: THREE.DoubleSide
+  });
+  // will be filled async
+  let mats = (json.materials||[]).map(() => defaultMat.clone());
+
+  // ── traverse node tree (geometry only, mats applied after) ──
+  const meshObjects = []; // collect { mesh, primMatIdx }
+
+  function processNode(nodeIdx, parentMtx) {
+    const node = (json.nodes||[])[nodeIdx];
+    if (!node) return;
+
+    const mtx = new THREE.Matrix4();
+    if (node.matrix) {
+      mtx.fromArray(node.matrix);
+    } else {
+      const t = node.translation || [0,0,0];
+      const r = node.rotation    || [0,0,0,1];
+      const s = node.scale       || [1,1,1];
+      mtx.compose(
+        new THREE.Vector3(t[0],t[1],t[2]),
+        new THREE.Quaternion(r[0],r[1],r[2],r[3]),
+        new THREE.Vector3(s[0],s[1],s[2])
+      );
+    }
+    if (parentMtx) mtx.premultiply(parentMtx);
+
+    if (node.mesh !== undefined) {
+      const meshDef = (json.meshes||[])[node.mesh];
+      if (meshDef) {
+        (meshDef.primitives||[]).forEach(prim => {
+          const geo = new THREE.BufferGeometry();
+
+          const pos = getAccessor(prim.attributes && prim.attributes.POSITION);
+          if (!pos) return;
+          geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+
+          const norm = getAccessor(prim.attributes && prim.attributes.NORMAL);
+          if (norm) geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(norm), 3));
+
+          const uv0 = getAccessor(prim.attributes && prim.attributes.TEXCOORD_0);
+          if (uv0) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv0), 2));
+
+          const uv1 = getAccessor(prim.attributes && prim.attributes.TEXCOORD_1);
+          if (uv1) geo.setAttribute('uv2', new THREE.BufferAttribute(new Float32Array(uv1), 2));
+
+          if (prim.indices !== undefined) {
+            const idx = getAccessor(prim.indices);
+            if (idx) {
+              const arr = idx instanceof Uint32Array ? new Uint32Array(idx) : new Uint16Array(idx);
+              geo.setIndex(new THREE.BufferAttribute(arr, 1));
+            }
+          }
+
+          if (!norm) geo.computeVertexNormals();
+
+          const mesh = new THREE.Mesh(geo, defaultMat.clone());
+          mesh.applyMatrix4(mtx);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          group.add(mesh);
+
+          meshObjects.push({ mesh, matIdx: prim.material });
+        });
+      }
+    }
+
+    (node.children||[]).forEach(childIdx => processNode(childIdx, mtx));
+  }
+
+  // start from scene root nodes
+  const scene0 = (json.scenes||[])[json.scene !== undefined ? json.scene : 0];
+  if (scene0 && scene0.nodes && scene0.nodes.length) {
+    scene0.nodes.forEach(ni => processNode(ni, null));
+  } else if (json.nodes && json.nodes.length) {
+    json.nodes.forEach((_, ni) => processNode(ni, null));
+  }
+
+  if (group.children.length === 0) throw new Error('No renderable meshes found in GLTF');
+
+  // ── async: load textures then swap materials ──
+  buildMaterialsAsync().then(builtMats => {
+    mats = builtMats;
+    meshObjects.forEach(({ mesh, matIdx }) => {
+      if (matIdx !== undefined && builtMats[matIdx]) {
+        mesh.material = builtMats[matIdx];
+        mesh.material.needsUpdate = true;
+      }
+    });
+  }).catch(e => console.warn('Texture build error:', e));
+
+  return group;
+}
+
+function onModelLoaded(group, filename) {
+  // auto-scale to fit in ~1.2 unit bounding box
+  const box = new THREE.Box3().setFromObject(group);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (maxDim > 0) group.scale.setScalar(1.2 / maxDim);
+
+  // center at origin
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  group.position.sub(center.multiplyScalar(1.2 / maxDim));
+
+  pendingModelObject = group;
+  document.getElementById('model-spinner').classList.remove('show');
+  setModelStatus('✓ โหลดสำเร็จ พร้อมวาง!', false);
+  enableConfirm();
+}
+
+function onModelError(e) {
+  console.error('Model load error:', e);
+  document.getElementById('model-spinner').classList.remove('show');
+  document.getElementById('model-drop').style.display = 'block';
+  setModelStatus('❌ โหลดไม่สำเร็จ ลองไฟล์อื่น', true);
+}
+
+// ── Place model in scene ──
+let pendingModelURL = null; // track URL source if loaded from URL
+
+window.placeModel = function() {
+  if (!pendingModelObject) return;
+
+  const scalePct = parseFloat(document.getElementById('model-scale').value) / 100;
+  const name = document.getElementById('model-name-input').value.trim() || 'โมเดล ' + (modelIdCounter + 1);
+  const id = 'usermodel_' + (modelIdCounter++);
+
+  const group = pendingModelObject.clone(true);
+
+  const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const placePos = camera.position.clone().addScaledVector(forward, 2.2);
+  placePos.y = 0;
+
+  group.position.copy(placePos);
+  group.scale.multiplyScalar(scalePct);
+  group.rotation.y = yaw + Math.PI;
+
+  const box = new THREE.Box3().setFromObject(group);
+  group.position.y -= box.min.y;
+
+  group.traverse(child => {
+    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+  });
+
+  group.userData = { id, name, type: 'userModel',
+    desc: `โมเดล 3D · ${name}`, artist: 'ผู้ใช้งาน',
+    year: new Date().getFullYear(),
+    _sourceURL: pendingModelURL || null,  // ← เก็บ URL ต้นทาง
+    _scalePct: scalePct
+  };
+  scene.add(group);
+
+  group.traverse(child => {
+    if (child.isMesh) {
+      child.userData = { ...group.userData };
+      interactables.push(child);
+    }
+  });
+
+  placedModels.push({ group, name, id });
+  updateModelsList();
+  closeModelModal();
+  pendingModelObject = null;
+  pendingModelURL = null;
+
+  setModelStatus('', false);
+  saveAll(); // ← บันทึกทันที
+  showToast(`✓ วาง "${name}" แล้ว`);
+};
+
+// ── Models list panel ──
+function updateModelsList() {
+  const list = document.getElementById('models-list');
+  const inner = document.getElementById('models-list-inner');
+  if (placedModels.length === 0) { list.classList.remove('show'); return; }
+  list.classList.add('show');
+  inner.innerHTML = placedModels.map((m,i) =>
+    `<div class="model-item">
+      <span class="model-item-name" title="${m.name}">${m.name}</span>
+      <span class="model-item-del" onclick="removeModel('${m.id}')" title="ลบ">✕</span>
+    </div>`
+  ).join('');
+}
+
+window.removeModel = function(id) {
+  const idx = placedModels.findIndex(m => m.id === id);
+  if (idx === -1) return;
+  const { group } = placedModels[idx];
+  // remove from interactables
+  group.traverse(child => {
+    if (child.isMesh) {
+      const ii = interactables.indexOf(child);
+      if (ii !== -1) interactables.splice(ii, 1);
+    }
+  });
+  scene.remove(group);
+  placedModels.splice(idx, 1);
+  updateModelsList();
+};
+
+// ── Toast notification ──
+function showToast(msg) {
+  let t = document.getElementById('toast-notif');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast-notif';
+    t.style.cssText = `position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
+      background:rgba(30,60,30,0.92);border:1px solid rgba(80,200,100,0.4);
+      border-radius:8px;padding:10px 22px;color:#80ffb0;font-size:13px;
+      letter-spacing:0.06em;pointer-events:none;backdrop-filter:blur(8px);
+      transition:opacity 0.4s;z-index:200;white-space:nowrap;`;
+    document.getElementById('canvas-container').appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// ═══════════════════════════════════════════════════════
+// ─── TRANSFORM GIZMO SYSTEM ─────────────────────────
+// ═══════════════════════════════════════════════════════
+let selectedModel = null;   // { group, name, id, origScale }
+let transformMode = 'move'; // 'move' | 'rotate' | 'scale'
+let transformInterval = null;
+let bboxHelper = null;
+
+// ── Bounding box highlight ──
+function showBBox(group) {
+  removeBBox();
+  bboxHelper = new THREE.BoxHelper(group, 0x60a0ff);
+  bboxHelper.material.linewidth = 2;
+  scene.add(bboxHelper);
+}
+function removeBBox() {
+  if (bboxHelper) { scene.remove(bboxHelper); bboxHelper.geometry.dispose(); bboxHelper = null; }
+}
+function updateBBox() {
+  if (bboxHelper && selectedModel) bboxHelper.update();
+}
+
+// ── Select / deselect ──
+function selectModel(modelEntry) {
+  if (selectedModel && selectedModel.id === modelEntry.id) return;
+  deselectModel();
+  selectedModel = { ...modelEntry, origScale: modelEntry.group.scale.clone() };
+  showBBox(modelEntry.group);
+  document.getElementById('tp-model-name').textContent = modelEntry.name;
+
+  // show panel with animation
+  const panel = document.getElementById('transform-panel');
+  panel.style.display = 'block';
+  requestAnimationFrame(() => panel.classList.add('show'));
+
+  setTransformMode('move');
+}
+
+window.deselectModel = function() {
+  stopTransform();
+  removeBBox();
+  selectedModel = null;
+  const panel = document.getElementById('transform-panel');
+  panel.classList.remove('show');
+  setTimeout(() => { if (!panel.classList.contains('show')) panel.style.display = 'none'; }, 220);
+};
+
+// ── Mode switch ──
+window.setTransformMode = function(mode) {
+  transformMode = mode;
+  ['move','rotate','scale'].forEach(m => {
+    document.getElementById('tpm-'+m).classList.toggle('active', m===mode);
+    document.getElementById('tp-'+m+'-section').style.display = m===mode ? 'block' : 'none';
+  });
+};
+
+// ── Continuous transform on hold ──
+const MOVE_STEP  = 0.04;
+const ROT_STEP   = 0.03;
+const SCALE_STEP = 0.02;
+
+window.startTransform = function(axis, dir) {
+  stopTransform();
+  applyTransform(axis, dir); // immediate first tick
+  transformInterval = setInterval(() => applyTransform(axis, dir), 40);
+};
+window.stopTransform = function() {
+  clearInterval(transformInterval);
+  transformInterval = null;
+  saveAll(); // บันทึกตำแหน่งใหม่
+};
+
+function applyTransform(axis, dir) {
+  if (!selectedModel) return;
+  const g = selectedModel.group;
+  const HALF_W = RW/2 - 0.3, HALF_D = RD/2 - 0.3;
+
+  if (axis === 'x') {
+    g.position.x = Math.max(-HALF_W, Math.min(HALF_W, g.position.x + dir * MOVE_STEP));
+  } else if (axis === 'y') {
+    g.position.y = Math.max(0, Math.min(RH - 0.1, g.position.y + dir * MOVE_STEP));
+  } else if (axis === 'z') {
+    g.position.z = Math.max(-HALF_D, Math.min(HALF_D, g.position.z + dir * MOVE_STEP));
+  } else if (axis === 'ry') {
+    g.rotation.y += dir * ROT_STEP;
+  } else if (axis === 'rx') {
+    g.rotation.x += dir * ROT_STEP;
+  } else if (axis === 'rz') {
+    g.rotation.z += dir * ROT_STEP;
+  } else if (axis === 's') {
+    const ns = Math.max(0.05, Math.min(20, g.scale.x + dir * SCALE_STEP));
+    g.scale.setScalar(ns);
+  }
+}
+
+// ── Snap to floor ──
+window.snapModelToFloor = function() {
+  if (!selectedModel) return;
+  const g = selectedModel.group;
+  const box = new THREE.Box3().setFromObject(g);
+  g.position.y -= box.min.y;
+};
+
+// ── Reset scale ──
+window.resetModelScale = function() {
+  if (!selectedModel) return;
+  selectedModel.group.scale.copy(selectedModel.origScale);
+};
+
+// ── Delete selected ──
+window.deleteSelectedModel = function() {
+  if (!selectedModel) return;
+  removeModel(selectedModel.id);
+  deselectModel();
+};
+
+
+
+
+
+// ── Hook confirmUpload to save (อัปโหลดไฟล์ขึ้น Drive จริงๆ) ──
+window.confirmUpload = async function() {
+  console.log('confirmUpload called, pendingMesh:', pendingMesh); // ← ย้ายมาก่อน if
+  if (!pendingMesh) return;
+
+  // เก็บค่าไว้ก่อน closeUploadModal จะ reset ทุกอย่างเป็น null
+  const mesh      = pendingMesh;
+  const imageFile = pendingImageFile;
+  const audioFile = pendingAudioFile;
+  const imageUrl  = pendingImageDataUrl;
+
+  const title = document.getElementById('upload-title-input').value.trim() || mesh.userData.title;
+  const desc  = document.getElementById('upload-desc-input').value.trim()  || mesh.userData.desc;
+  mesh.userData.title    = title;
+  mesh.userData.desc     = desc;
+  mesh.userData.artist   = 'ผลงานของคุณ';
+  mesh.userData.year     = new Date().getFullYear().toString();
+  mesh.userData._customized = true;
+
+  // แสดงรูปใน museum ทันที
+  if (imageUrl) loadImageToMesh(mesh, imageUrl);
+
+  // ปิด modal ได้เลย เพราะเก็บค่าทุกอย่างไว้แล้ว
+  closeUploadModal();
+  showToast('⏳ กำลังอัปโหลด...');
+
+  // อัปโหลดรูปขึ้น Drive
+  if (imageFile) {
+    try {
+      const url = await uploadFileToDrive(imageFile, 'images');
+      mesh.userData._cloudUrl = url;
+      showToast('🖼 อัปโหลดรูปสำเร็จ');
+    } catch(e) {
+      console.warn('Image upload failed:', e);
+      showToast('⚠️ อัปโหลดรูปไม่สำเร็จ');
+    }
+  }
+
+  // อัปโหลดเสียงขึ้น Drive
+  if (audioFile) {
+    try {
+      const url = await uploadFileToDrive(audioFile, 'audio');
+      mesh.userData._audioUrl = url;
+      setArtworkAudio(mesh.userData.id, url, mesh.userData._audioName);
+      showToast('🎵 อัปโหลดเสียงสำเร็จ');
+    } catch(e) {
+      console.warn('Audio upload failed:', e);
+      showToast('⚠️ อัปโหลดเสียงไม่สำเร็จ');
+    }
+  }
+
+  await saveAll();
+};
+
+// ── Hook qeSave ──
+window.qeSave = function() {
+  for (const [id, qs] of Object.entries(qeDraft)) {
+    quizBank[id] = qs.filter(q => q.q.trim() && q.choices.some(c => c.trim()));
+  }
+  saveAll();
+  const t = document.getElementById('qe-saved-toast');
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2000);
+};
+
+
+
+// ═══════════════════════════════════════════════════════
+// ─── PERMANENT MODELS (ทุกคนเห็น) ──────────────────
+// ═══════════════════════════════════════════════════════
+function loadPermanentModels() {
+  const models = [
+    // โมเดลจะโหลดจาก Google Sheet ผ่าน loadAll() แทน
+  ];
+
+  models.forEach(md => {
+    fetch(md.url)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then(buf => {
+        const ext = md.url.split('.').pop().toLowerCase();
+        const group = ext === 'obj'
+          ? parseOBJText(new TextDecoder().decode(buf))
+          : parseGLTFBuffer(buf, md.url.split('/').pop());
+
+        // auto-normalize scale first
+        const box0 = new THREE.Box3().setFromObject(group);
+        const size0 = new THREE.Vector3();
+        box0.getSize(size0);
+        const maxDim = Math.max(size0.x, size0.y, size0.z);
+        if (maxDim > 0) group.scale.setScalar(1.2 / maxDim);
+        const center0 = new THREE.Vector3();
+        box0.getCenter(center0);
+        group.position.sub(center0.multiplyScalar(1.2 / maxDim));
+
+        // apply saved transform
+        group.scale.multiplyScalar(md.scale);
+        group.position.set(md.x, md.y, md.z);
+        group.rotation.set(md.rx, md.ry, md.rz);
+
+        group.traverse(c => {
+          if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+        });
+        scene.add(group);
+        showToast(`✓ โหลด "${md.name}" แล้ว`);
+      })
+      .catch(e => console.warn('Permanent model failed:', md.url, e));
+  });
+}
+loadPermanentModels();
+
+// ═══════════════════════════════════════════════════════
+// ─── PERMANENT PAINTINGS (ทุกคนเห็น) ────────────────
+// ═══════════════════════════════════════════════════════
+function loadPermanentPaintings() {
+  const paintings = [
+    // ภาพจะโหลดจาก Google Sheet ผ่าน loadAll() แทน
+  ];
+
+  paintings.forEach(p => {
+    const mesh = interactables.find(m => m.userData.id === p.id && m.userData.type === 'painting');
+    if (!mesh) return;
+
+    // update metadata
+    mesh.userData.title  = p.title;
+    mesh.userData.desc   = p.desc;
+    mesh.userData.artist = p.artist;
+    mesh.userData.year   = p.year;
+
+    // load image from URL
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+      const [c, cx] = makeCanvas(img.naturalWidth || 512, img.naturalHeight || 512);
+      cx.drawImage(img, 0, 0, c.width, c.height);
+      const tex = texFromCanvas(c);
+      mesh.material.map = tex;
+      mesh.material.needsUpdate = true;
+    };
+    img.onerror = () => console.warn('Image load failed:', p.url);
+    img.src = p.url;
+  });
+}
+// โหลดหลังจาก scene พร้อม
+setTimeout(loadPermanentPaintings, 500);
+
+// ═══════════════════════════════════════════════════════
+// ─── GOOGLE APPS SCRIPT INTEGRATION ─────────────────
+// ═══════════════════════════════════════════════════════
+
+const GAS_READ_URL  = 'your url';   // URL Deploy นักเรียน (GET)
+const GAS_WRITE_URL = 'your url';   // URL Deploy ครู (POST)
+const GAS_SECRET    = 'you secret key';    // SECRET_KEY ต้องตรงกับใน Apps Script
+
+// ── POST helper ──
+async function gasPost(payload) {
+  try {
+    const res = await fetch(GAS_WRITE_URL, {
+      method: 'POST',
+      body: JSON.stringify({ key: GAS_SECRET, ...payload })
+    });
+    return await res.json();
+  } catch(e) {
+    console.warn('[gasPost] failed:', e);
+    return { error: e.message };
+  }
+}
+
+// ── อัปโหลดไฟล์ขึ้น Drive แล้วได้ URL กลับมา ──
+async function uploadFileToDrive(file, subFolder) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const base64 = e.target.result.split(',')[1];
+      const result = await gasPost({
+        action: 'uploadFile',
+        fileName: file.name,
+        mimeType: file.type,
+        base64,
+        subFolder
+      });
+      if (result.ok) resolve(result.url);
+      else reject(result.error);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── บันทึก metadata ของชิ้นงานลง Sheet ──
+async function saveMetadata(mesh) {
+  const d = mesh.userData;
+  const quiz = quizBank[d.id] ? JSON.stringify(quizBank[d.id]) : '';
+  
+  // ถ้าไม่มี _cloudUrl ใหม่ ให้ดึง fileUrl เดิมจาก Sheet มาใช้แทน
+  const fileUrl = d._cloudUrl || d._existingFileUrl || '';
+  const audioUrl = d._audioUrl || d._existingAudioUrl || '';
+
+  return gasPost({
+    action: 'saveMetadata',
+    data: {
+      id:       d.id || '',
+      type:     d.type || '',
+      title:    d.title || '',
+      desc:     d.desc || '',
+      artist:   d.artist || '',
+      year:     d.year || '',
+      fileUrl,
+      audioUrl,
+      x: '', y: '', z: '', rx: '', ry: '', rz: '', scale: '',
+      bpm: d._bpm || '', key: d._key || '',
+      quizData: quiz
+    }
+  });
+}
+
+// ── saveAll — บันทึกทุกชิ้นงานที่ถูก customize ──
+async function saveAll() {
+  // รวมทั้ง customized และมี quiz
+  const targets = interactables.filter(m => 
+    m.userData._customized || quizBank[m.userData.id]?.length > 0
+  );
+  if (targets.length === 0) {
+    console.log('[saveAll] nothing to save');
+    return;
+  }
+  showToast('💾 กำลังบันทึก...');
+  for (const mesh of targets) {
+    await saveMetadata(mesh);
+  }
+  showToast('✅ บันทึกขึ้น Cloud แล้ว');
+}
+
+// ── loadAll — โหลดข้อมูลจาก Sheet ตอนเปิดหน้า ──
+async function loadAll() {
+  try {
+    const res  = await fetch(GAS_READ_URL);
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) return;
+
+    data.items.forEach(item => {
+      const mesh = interactables.find(m => m.userData.id === item.id);
+      if (!mesh) return;
+      if (item.title)    mesh.userData.title  = item.title;
+      if (item.desc)     mesh.userData.desc   = item.desc;
+      if (item.artist)   mesh.userData.artist = item.artist;
+      if (item.year)     mesh.userData.year   = item.year;
+      if (item.fileUrl)  {
+        mesh.userData._existingFileUrl = item.fileUrl;  // ← เพิ่ม
+        loadImageToMesh(mesh, item.fileUrl);
+      }
+      if (item.audioUrl) {
+        mesh.userData._existingAudioUrl = item.audioUrl;  // ← เพิ่ม
+        mesh.userData._audioUrl = item.audioUrl;
+        setArtworkAudio(item.id, item.audioUrl, item.title);
+      }
+      if (item.quizData) {
+        try { quizBank[item.id] = JSON.parse(item.quizData); } catch(e) {}
+      }
+    });
+    console.log('[loadAll] loaded', data.items.length, 'items');
+  } catch(e) {
+    console.warn('[loadAll] failed:', e);
+  }
+}
+
+// โหลดข้อมูลจาก cloud ตอนเริ่ม
+setTimeout(loadAll, 1500);
+
+//แก้5
+setTimeout(loadTeacherPassword, 1000);
+//
+// ── init audio HUD buttons สำหรับ interactables ที่มีอยู่แล้ว ──
+setTimeout(() => {
+  interactables.forEach(m => {
+    if(m.userData.id) ensureAudioHudBtn(m.userData.id);
+  });
+}, 600);
+
+
+// ── Click to select placed model ──
+renderer.domElement.addEventListener('dblclick', () => {
+  if (selectedModel) { deselectModel(); return; }
+});
+
+const _patchSelectOnClick = function() {
+  raycaster.setFromCamera(pointer, camera);
+  const modelMeshes = [];
+  placedModels.forEach(m => m.group.traverse(c => { if (c.isMesh) modelMeshes.push({ mesh: c, entry: m }); }));
+  const mhits = raycaster.intersectObjects(modelMeshes.map(m => m.mesh));
+  if (mhits.length > 0) {
+    const hit = mhits[0].object;
+    const entry = modelMeshes.find(m => m.mesh === hit);
+    if (entry) { selectModel(entry.entry); return true; }
+  }
+  return false;
+};
+
+// ── Update position display every frame ──
+window._gizmoTick = function() {
+  updateBBox();
+  if (selectedModel) {
+    const g = selectedModel.group;
+    const p = g.position, r = g.rotation, s = g.scale.x;
+    document.getElementById('tp-pos-display').innerHTML =
+      `x: <b>${p.x.toFixed(2)}</b>  y: <b>${p.y.toFixed(2)}</b>  z: <b>${p.z.toFixed(2)}</b><br>` +
+      `rx: ${r.x.toFixed(2)}  ry: <b>${r.y.toFixed(2)}</b>  rz: ${r.z.toFixed(2)}<br>` +
+      `scale: <b>${s.toFixed(2)}</b>  &nbsp;|&nbsp; url: ${(g.userData._sourceURL||'—').split('/').pop()}`;
+  }
+};
+
+// ── Copy position as prompt for Claude ──
+window.copyModelPosition = function() {
+  if (!selectedModel) return;
+  const g = selectedModel.group;
+  const p = g.position, r = g.rotation, s = g.scale.x;
+  const url = g.userData._sourceURL || '';
+  const text =
+`ฝังโมเดลนี้ใน HTML ให้ทุกคนเห็น:
+URL: ${url}
+ชื่อ: ${selectedModel.name}
+x: ${p.x.toFixed(3)}, y: ${p.y.toFixed(3)}, z: ${p.z.toFixed(3)}
+rx: ${r.x.toFixed(3)}, ry: ${r.y.toFixed(3)}, rz: ${r.z.toFixed(3)}
+scale: ${s.toFixed(3)}`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('📋 Copy แล้ว — paste ให้ Claude ได้เลย!');
+  }).catch(() => {
+    // fallback: show in prompt
+    window.prompt('Copy ข้อความนี้แล้วส่งให้ Claude:', text);
+  });
+};
+
+
+</script>
+</body>
+</html>
+
